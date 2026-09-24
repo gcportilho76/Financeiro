@@ -2,6 +2,8 @@
 -- CASH GUARD — SCRIPT COMPLETO DE CRIAÇÃO DO ESQUEMA
 -- Execute UMA ÚNICA vez no SQL Editor do Supabase.
 -- Todas as instruções são idempotentes (IF NOT EXISTS / DROP POLICY IF EXISTS).
+-- Ordem de criação respeita dependências de chaves estrangeiras:
+--   profiles → contas → receitas/despesas/cartoes_registry → ...
 -- =====================================================================
 
 -- =====================================================================
@@ -40,7 +42,36 @@ CREATE TRIGGER on_auth_user_created
 REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authenticated;
 
 -- =====================================================================
--- 2. RECEITAS
+-- 2. CONTAS BANCÁRIAS (criada ANTES de receitas/despesas/cartoes_registry)
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS public.contas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  instituicao TEXT,
+  tipo TEXT NOT NULL DEFAULT 'corrente',
+  saldo_inicial NUMERIC NOT NULL DEFAULT 0,
+  data_saldo_inicial DATE NOT NULL DEFAULT CURRENT_DATE,
+  saldo_banco NUMERIC,
+  data_saldo_banco DATE,
+  ultima_conferencia TIMESTAMPTZ,
+  ultima_conciliacao TIMESTAMPTZ,
+  ativa BOOLEAN NOT NULL DEFAULT true,
+  observacoes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.contas TO authenticated;
+GRANT ALL ON public.contas TO service_role;
+ALTER TABLE public.contas ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "own contas" ON public.contas;
+CREATE POLICY "own contas" ON public.contas FOR ALL
+  TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- =====================================================================
+-- 3. RECEITAS
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS public.receitas (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -69,7 +100,7 @@ CREATE POLICY "own receitas" ON public.receitas FOR ALL
 CREATE INDEX IF NOT EXISTS receitas_user_comp_idx ON public.receitas (user_id, competencia);
 
 -- =====================================================================
--- 3. DESPESAS
+-- 4. DESPESAS
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS public.despesas (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -100,7 +131,7 @@ CREATE POLICY "own despesas" ON public.despesas FOR ALL
 CREATE INDEX IF NOT EXISTS despesas_user_comp_idx ON public.despesas (user_id, competencia);
 
 -- =====================================================================
--- 4. CARTÕES — LANÇAMENTOS
+-- 5. CARTÕES — LANÇAMENTOS
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS public.cartoes_lancamentos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -135,7 +166,7 @@ CREATE POLICY "own cartoes" ON public.cartoes_lancamentos FOR ALL
 CREATE INDEX IF NOT EXISTS cartoes_user_comp_idx ON public.cartoes_lancamentos (user_id, competencia);
 
 -- =====================================================================
--- 5. CARTÕES — REGISTRO (cadastro dos cartões)
+-- 6. CARTÕES — REGISTRO (cadastro dos cartões)
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS public.cartoes_registry (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -158,7 +189,7 @@ CREATE POLICY "own cartoes_registry" ON public.cartoes_registry FOR ALL
   TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- =====================================================================
--- 6. CONSIGNADOS — CONTRATOS
+-- 7. CONSIGNADOS — CONTRATOS
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS public.consignados_contratos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -185,7 +216,7 @@ CREATE POLICY "own consignados" ON public.consignados_contratos FOR ALL
   TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- =====================================================================
--- 7. CONSIGNADOS — EVENTOS (avanços e amortizações)
+-- 8. CONSIGNADOS — EVENTOS (avanços e amortizações)
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS public.consignados_eventos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -210,7 +241,7 @@ CREATE POLICY "own eventos" ON public.consignados_eventos FOR ALL
   TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- =====================================================================
--- 8. INSUMOS
+-- 9. INSUMOS
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS public.insumos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -232,35 +263,6 @@ ALTER TABLE public.insumos ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "own insumos" ON public.insumos;
 CREATE POLICY "own insumos" ON public.insumos FOR ALL
-  TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-
--- =====================================================================
--- 9. CONTAS BANCÁRIAS
--- =====================================================================
-CREATE TABLE IF NOT EXISTS public.contas (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  instituicao TEXT,
-  tipo TEXT NOT NULL DEFAULT 'corrente',
-  saldo_inicial NUMERIC NOT NULL DEFAULT 0,
-  data_saldo_inicial DATE NOT NULL DEFAULT CURRENT_DATE,
-  saldo_banco NUMERIC,
-  data_saldo_banco DATE,
-  ultima_conferencia TIMESTAMPTZ,
-  ultima_conciliacao TIMESTAMPTZ,
-  ativa BOOLEAN NOT NULL DEFAULT true,
-  observacoes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.contas TO authenticated;
-GRANT ALL ON public.contas TO service_role;
-ALTER TABLE public.contas ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "own contas" ON public.contas;
-CREATE POLICY "own contas" ON public.contas FOR ALL
   TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- =====================================================================
