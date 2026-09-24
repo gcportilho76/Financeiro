@@ -11,5 +11,12 @@ export default defineConfig({
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
+    // This app is fully client-driven: auth lives in the browser (localStorage /
+    // brokered preview storage) and every route is `ssr: false`. Under SSR the server
+    // renders the shell while the client resolves async auth `beforeLoad` guards and
+    // redirects, which produced recoverable hydration mismatch errors. SPA mode
+    // prerenders only the root shell and lets the client render all routes
+    // consistently, eliminating those mismatches.
+    spa: { enabled: true },
   },
 });
