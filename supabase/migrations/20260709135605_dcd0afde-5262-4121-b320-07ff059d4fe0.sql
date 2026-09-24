@@ -1,0 +1,3 @@
+ALTER TABLE public.reservas ADD COLUMN IF NOT EXISTS competencia date NOT NULL DEFAULT date_trunc('month', now())::date;
+UPDATE public.reservas SET competencia = date_trunc('month', created_at)::date WHERE competencia IS NULL OR competencia = date_trunc('month', now())::date AND created_at < date_trunc('month', now());
+CREATE INDEX IF NOT EXISTS reservas_user_competencia_idx ON public.reservas (user_id, competencia);

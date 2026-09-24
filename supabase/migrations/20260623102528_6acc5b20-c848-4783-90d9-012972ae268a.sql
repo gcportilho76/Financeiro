@@ -1,0 +1,1 @@
+ALTER TABLE public.consignados_contratos ADD COLUMN taxa_juros_mensal numeric;
