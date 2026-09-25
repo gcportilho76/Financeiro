@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
-import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
+import { createOpenAI } from "@ai-sdk/openai";
 
 type ExtractedItem = {
   data: string;
@@ -21,9 +21,9 @@ export const Route = createFileRoute("/api/import-extrato")({
 
         const supabaseUrl = process.env["SUPABASE_URL"];
         const publishableKey = process.env["SUPABASE_PUBLISHABLE_KEY"];
-        const lovableKey = process.env["LOVABLE_API_KEY"];
+        const openaiKey = process.env["OPENAI_API_KEY"];
 
-        if (!supabaseUrl || !publishableKey || !lovableKey) {
+        if (!supabaseUrl || !publishableKey || !openaiKey) {
           return jsonResponse({ error: "Servidor mal configurado" }, 500);
         }
 
@@ -72,8 +72,8 @@ export const Route = createFileRoute("/api/import-extrato")({
         const base64 = await fileToBase64(file);
         const dataUrl = `data:${file.type};base64,${base64}`;
 
-        const gateway = createLovableAiGatewayProvider(lovableKey);
-        const model = gateway.responses("openai/gpt-4o");
+        const openai = createOpenAI({ apiKey: openaiKey });
+        const model = openai("gpt-4o");
 
         const systemPrompt = `Você é um especialista em ler extratos bancários e faturas de cartão de crédito brasileiros.
 Analise o documento fornecido e extraia TODAS as transações financeiras visíveis.
