@@ -4,17 +4,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
 } from "recharts";
-import {
-  Wallet, TrendingUp, AlertTriangle, Calendar, Printer, Download,
-  Plus, Edit2, Trash2, Copy, ChevronLeft, ChevronRight, LogOut,
-  CreditCard, Receipt, Banknote, Landmark, Trophy, Settings, Target,
-  Package, Bell, ChevronDown, ChevronUp, PiggyBank, ArrowUpFromLine,
-  Sparkles,
-} from "lucide-react";
+import { Wallet, TrendingUp, TriangleAlert as AlertTriangle, Calendar, Printer, Download, Plus, CreditCard as Edit2, Trash2, Copy, ChevronLeft, ChevronRight, LogOut, CreditCard, Receipt, Banknote, Landmark, Trophy, Settings, Target, Package, Bell, ChevronDown, ChevronUp, PiggyBank, ArrowUpFromLine, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { DatePicker } from "@/components/date-picker";
 import { ComprometidosPanel } from "@/components/comprometidos-panel";
 import { ContasPanel } from "@/components/contas-panel";
+import { ImportExtratoPanel } from "@/components/import-extrato-panel";
 
 import { fetchAll } from "@/lib/queries";
 
@@ -210,7 +205,7 @@ function Dashboard() {
         </div>
 
         <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="grid grid-cols-3 md:grid-cols-9 w-full max-w-4xl h-auto">
+          <TabsList className="grid grid-cols-3 md:grid-cols-10 w-full max-w-4xl h-auto">
             <TabsTrigger value="resumo">Resumo</TabsTrigger>
             <TabsTrigger value="contas">Contas</TabsTrigger>
             <TabsTrigger value="receitas">Receitas</TabsTrigger>
@@ -220,6 +215,7 @@ function Dashboard() {
             <TabsTrigger value="consignados">Consignados</TabsTrigger>
             <TabsTrigger value="reservas">Reservas</TabsTrigger>
             <TabsTrigger value="comprometido">Comprometido</TabsTrigger>
+            <TabsTrigger value="importar">Importar</TabsTrigger>
           </TabsList>
 
 
@@ -259,6 +255,10 @@ function Dashboard() {
 
           <TabsContent value="comprometido" className="mt-4">
             <ComprometidosPanel comp={comp} contratos={data.contratos} />
+          </TabsContent>
+
+          <TabsContent value="importar" className="mt-4">
+            <ImportExtratoPanel comp={comp} onSaved={refresh} />
           </TabsContent>
         </Tabs>
 
