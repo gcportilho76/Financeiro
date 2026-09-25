@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
 type ExtractedItem = {
   data: string;
@@ -21,9 +21,9 @@ export const Route = createFileRoute("/api/import-extrato")({
 
         const supabaseUrl = process.env["SUPABASE_URL"];
         const publishableKey = process.env["SUPABASE_PUBLISHABLE_KEY"];
-        const openaiKey = process.env["OPENAI_API_KEY"];
+        const geminiKey = process.env["GEMINI_API_KEY"];
 
-        if (!supabaseUrl || !publishableKey || !openaiKey) {
+        if (!supabaseUrl || !publishableKey || !geminiKey) {
           return jsonResponse({ error: "Servidor mal configurado" }, 500);
         }
 
@@ -72,8 +72,8 @@ export const Route = createFileRoute("/api/import-extrato")({
         const base64 = await fileToBase64(file);
         const dataUrl = `data:${file.type};base64,${base64}`;
 
-        const openai = createOpenAI({ apiKey: openaiKey });
-        const model = openai("gpt-4o");
+        const google = createGoogleGenerativeAI({ apiKey: geminiKey });
+        const model = google("gemini-1.5-flash");
 
         const systemPrompt = `Você é um especialista em ler extratos bancários e faturas de cartão de crédito brasileiros.
 Analise o documento fornecido e extraia TODAS as transações financeiras visíveis.
@@ -119,25 +119,11 @@ Se não houver transações, retorne: {"itens": []}`;
           },
         ];
 
-        if (file.type === "application/pdf" && rawText) {
-          // PDF with extracted text — send text only to save tokens
-        } else {
-          // Image or textless PDF — send as image
-          userContent.push({
-            type: "file",
-            filename: file.name,
-            file_data: dataUrl,
-          } as any);
-        }
-
-        // For PDFs we also send the image so GPT-4o can see tables/layouts
-        if (file.type === "application/pdf") {
-          userContent.push({
-            type: "file",
-            filename: file.name,
-            file_data: dataUrl,
-          } as any);
-        }
+        // Gemini recebe imagem como tipo "image" com data URL
+        userContent.push({
+          type: "image",
+          image: dataUrl,
+        } as any);
 
         let itens: ExtractedItem[] = [];
 
