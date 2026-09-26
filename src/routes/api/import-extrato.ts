@@ -45,10 +45,14 @@ export const Route = createFileRoute("/api/import-extrato")({
 
           // ─── Env validation (early, explicit) ───────────────
           const supabaseUrl =
-            process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"];
+            import.meta.env.VITE_SUPABASE_URL ||
+            process.env.SUPABASE_URL ||
+            process.env.VITE_SUPABASE_URL;
           const publishableKey =
-            process.env["SUPABASE_PUBLISHABLE_KEY"] ||
-            process.env["VITE_SUPABASE_ANON_KEY"];
+            import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+            import.meta.env.VITE_SUPABASE_ANON_KEY ||
+            process.env.SUPABASE_PUBLISHABLE_KEY ||
+            process.env.VITE_SUPABASE_ANON_KEY;
           const geminiKey = process.env["GEMINI_API_KEY"];
 
           if (!geminiKey) {
@@ -250,6 +254,5 @@ async function extractPdfText(file: File): Promise<string> {
     return "";
   }
 }
-
 
 export { Route }
