@@ -254,5 +254,3 @@ async function extractPdfText(file: File): Promise<string> {
     return "";
   }
 }
-
-export { Route }
