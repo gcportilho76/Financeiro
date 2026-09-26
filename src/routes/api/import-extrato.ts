@@ -44,8 +44,11 @@ export const Route = createFileRoute("/api/import-extrato")({
           }
 
           // ─── Env validation (early, explicit) ───────────────
-          const supabaseUrl = process.env["SUPABASE_URL"];
-          const publishableKey = process.env["SUPABASE_PUBLISHABLE_KEY"];
+          const supabaseUrl =
+            process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"];
+          const publishableKey =
+            process.env["SUPABASE_PUBLISHABLE_KEY"] ||
+            process.env["VITE_SUPABASE_ANON_KEY"];
           const geminiKey = process.env["GEMINI_API_KEY"];
 
           if (!geminiKey) {
@@ -57,7 +60,7 @@ export const Route = createFileRoute("/api/import-extrato")({
 
           if (!supabaseUrl || !publishableKey) {
             return jsonResponse(
-              { error: "SUPABASE_URL ou SUPABASE_PUBLISHABLE_KEY não configurados no servidor" },
+              { error: "SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY (ou VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) não configurados no servidor" },
               500,
             );
           }
@@ -247,3 +250,6 @@ async function extractPdfText(file: File): Promise<string> {
     return "";
   }
 }
+
+
+export { Route }
