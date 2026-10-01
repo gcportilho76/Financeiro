@@ -115,7 +115,6 @@ export const Route = createFileRoute("/api/import-extrato")({
 
           // ─── Convert file to base64 ─────────────────────────
           const base64 = await fileToBase64(file);
-          const dataUrl = `data:${file.type};base64,${base64}`;
 
           // ─── Optional PDF text extraction ───────────────────
           let rawText = "";
@@ -127,7 +126,7 @@ export const Route = createFileRoute("/api/import-extrato")({
             }
           }
 
-          // ─── Safe SDK init (inside request) ────────────────
+          // ─── Safe SDK init ──────────────────────────────────
           let model: any;
           try {
             const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
@@ -145,18 +144,10 @@ export const Route = createFileRoute("/api/import-extrato")({
           const year = new Date().getFullYear();
           const prompt = SYSTEM_PROMPT.replace("o ano atual", `o ano atual ${year}`);
 
-          const userContent: any[] = [
-            {
-              type: "text",
-              text: rawText
-                ? `Texto extraído do PDF (use como referência, mas confira no documento visual):\n\n${rawText}\n\nAgora extraia todas as transações do documento.`
-                : "Extraia todas as transações financeiras deste documento.",
-            },
-            {
-              type: "image",
-              image: dataUrl,
-            },
-          ];
+          let userPromptText = "Extraia todas as transações financeiras deste documento.";
+          if (rawText.trim()) {
+            userPromptText = `Texto extraído do documento PDF (use como referência):\n\n${rawText}\n\nAgora extraia todas as transações do documento.`;
+          }
 
           // ─── Call Gemini ────────────────────────────────────
           let itens: ExtractedItem[] = [];
@@ -165,7 +156,22 @@ export const Route = createFileRoute("/api/import-extrato")({
             const result = await generateText({
               model,
               system: prompt,
-              messages: [{ role: "user", content: userContent }],
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: userPromptText,
+                    },
+                    {
+                      type: "file",
+                      data: base64,
+                      mimeType: file.type,
+                    },
+                  ],
+                },
+              ],
             });
 
             const text = result.text.trim();
