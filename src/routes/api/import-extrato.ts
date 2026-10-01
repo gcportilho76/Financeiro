@@ -114,14 +114,12 @@ export const Route = createFileRoute("/api/import-extrato")({
           }
 
           // ─── Safe SDK init ──────────────────────────────────
-        let model: any;
+       let googleProvider: any;
 try {
   const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
-  const google = createGoogleGenerativeAI({
+  googleProvider = createGoogleGenerativeAI({
     apiKey: geminiKey,
   });
-  // Nome atualizado suportado pela v1beta do Google AI
-  model = google("gemini-3.8-flash"); 
 } catch (sdkErr: any) {
   console.error("Failed to init Google Gemini SDK:", sdkErr);
   return jsonResponse(
@@ -154,34 +152,33 @@ try {
 
           // ─── Call Gemini ────────────────────────────────────
           let itens: ExtractedItem[] = [];
-          try {
-            const { generateText } = await import("ai");
-            const result = await generateText({
-              model,
-              system: prompt,
-              messages: [
-                {
-                  role: "user",
-                  content: userContent,
-                },
-              ],
-            });
+try {
+  const { generateText } = await import("ai");
 
-            const text = result.text.trim();
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              const parsed = JSON.parse(jsonMatch[0]);
-              itens = parsed.itens ?? [];
-            }
-          } catch (aiErr: any) {
-            console.error("AI extraction error:", aiErr);
-            return jsonResponse(
-              {
-                error: `Erro ao processar o documento com Gemini: ${aiErr?.message ?? String(aiErr)}`,
-              },
-              502,
-            );
-          }
+  // Lista de modelos na ordem de preferência (se 3.8-flash estiver sobrecarregado, usa 3.5-flash-lite)
+  const modelsToTry = [
+    googleProvider("gemini-3.8-flash"),
+    googleProvider("gemini-3.5-flash-lite"),
+  ];
+
+  let resultText = "";
+  let lastError: any = null;
+
+  for (const selectedModel of modelsToTry) {
+    try {
+      const result = await generateText({
+        model: selectedModel,
+        system: prompt,
+        messages: [{ role: "user", content: userContent }],
+        maxRetries: 2, // Tenta automaticamente até 2 vezes antes de desistir
+      });
+      resultText = result.text.trim();
+      if (resultText) break; // Sucesso!
+    } catch (err: any) {
+      lastError = err;
+      console.warn("Modelo falhou ou está sob alta demanda, tentando o próximo modelo...", err?.message);
+    }
+  }
 
           // ─── Clean & validate extracted items ──────────────
           const clean = itens
