@@ -114,17 +114,20 @@ export const Route = createFileRoute("/api/import-extrato")({
           }
 
           // ─── Safe SDK init ──────────────────────────────────
-          let model: any;
-          try {
-            const { google } = await import("@ai-sdk/google");
-            model = google("gemini-3.8-flash");
-          } catch (sdkErr: any) {
-            console.error("Failed to init Google Gemini SDK:", sdkErr);
-            return jsonResponse(
-              { error: `Falha ao inicializar o SDK do Gemini: ${sdkErr?.message ?? String(sdkErr)}` },
-              500,
-            );
-          }
+         let model: any;
+try {
+  const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+  const google = createGoogleGenerativeAI({
+    apiKey: geminiKey, // Passa a GEMINI_API_KEY
+  });
+  model = google("gemini-1.5-flash"); // Modelo rápido e oficial para leitura de documentos
+} catch (sdkErr: any) {
+  console.error("Failed to init Google Gemini SDK:", sdkErr);
+  return jsonResponse(
+    { error: `Falha ao inicializar o SDK do Gemini: ${sdkErr?.message ?? String(sdkErr)}` },
+    500,
+  );
+}
 
           // ─── Build AI request content ───────────────────────
           const year = new Date().getFullYear();
