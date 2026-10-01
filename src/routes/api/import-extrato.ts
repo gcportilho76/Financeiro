@@ -78,11 +78,10 @@ export const Route = createFileRoute("/api/import-extrato")({
 
             const google = createGoogleGenerativeAI({ apiKey: geminiKey });
 
-            // Lista de modelos a tentar em ordem caso o principal esteja sobrecarregado (503)
+            // Modelos suportados e ativos na API do Google
             const modelsToTry = [
-              "gemini-flash-latest",
-              "gemini-2.5-flash",
-              "gemini-1.5-flash",
+              "gemini-3.8-flash",
+              "gemini-3.5-flash-lite",
             ];
 
             let lastError: any = null;
@@ -93,13 +92,13 @@ export const Route = createFileRoute("/api/import-extrato")({
                   model: google(modelName),
                   system: SYSTEM_PROMPT,
                   messages: [{ role: "user", content: userContent }],
-                  maxRetries: 1,
+                  maxRetries: 2,
                 });
                 responseText = result.text.trim();
                 if (responseText) break; // Sucesso!
               } catch (err: any) {
                 lastError = err;
-                console.warn(`Modelo ${modelName} falhou ou está sobrecarregado. Tentando o próximo...`);
+                console.warn(`Modelo ${modelName} falhou, tentando o próximo...`, err?.message);
               }
             }
 
