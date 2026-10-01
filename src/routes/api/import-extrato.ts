@@ -13,78 +13,24 @@ const SYSTEM_PROMPT = `Você é um especialista em ler extratos bancários e fat
 Analise o documento fornecido e extraia TODAS as transações financeiras visíveis.
 
 Para cada transação, retorne:
-- data: no formato YYYY-MM-DD (se o documento não tiver o ano, use o ano atual)
-- descricao: texto limpo da transação (sem espaços extras)
-- valor: número positivo (sem formatação, ex: 1234.56)
+- data: no formato YYYY-MM-DD
+- descricao: texto limpo da transação
+- valor: número positivo (ex: 150.50)
 - tipo: "receita" para entradas/créditos ou "despesa" para saídas/débitos
-- categoria: uma categoria adequada entre: Habitação, Alimentação, Transporte, Educação, Saúde, Lazer, Cartão, Salário, Freelance, Investimentos, Amortização, Outros
-
-REGRAS:
-- Ignore cabeçalhos, rodapés e linhas de saldo/totais.
-- Para faturas de cartão, todas as transações são "despesa".
-- Para extratos bancários, depósitos/transferências recebidas = "receita"; pagamentos/débitos/saques = "despesa".
-- Se a data estiver ilegível, use uma string vazia "".
-- Se o valor estiver ilegível, use 0.
-- Não invente dados. Se não conseguir ler um campo, use valores vazios.
+- categoria: Habitação, Alimentação, Transporte, Educação, Saúde, Lazer, Cartão, Salário, Freelance, Investimentos, Amortização, Outros
 
 Responda APENAS com um JSON válido no formato:
-{"itens": [{"data": "2025-01-15", "descricao": "Supermercado X", "valor": 150.50, "tipo": "despesa", "categoria": "Alimentação"}, ...]}
-
-Se não houver transações, retorne: {"itens": []}`;
+{"itens": [{"data": "2026-01-15", "descricao": "Supermercado X", "valor": 150.50, "tipo": "despesa", "categoria": "Alimentação"}]}`;
 
 export const Route = createFileRoute("/api/import-extrato")({
   server: {
     handlers: {
       POST: async ({ request }) => {
         try {
-          // ─── Auth ───────────────────────────────────────────
-          const authHeader = request.headers.get("authorization");
-          if (!authHeader) {
-            return jsonResponse({ error: "Unauthorized" }, 401);
-          }
-
           // ─── Env validation ─────────────────────────────────
-          const supabaseUrl =
-            import.meta.env.VITE_SUPABASE_URL ||
-            process.env.SUPABASE_URL ||
-            process.env.VITE_SUPABASE_URL;
-          const publishableKey =
-            import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-            import.meta.env.VITE_SUPABASE_ANON_KEY ||
-            process.env.SUPABASE_PUBLISHABLE_KEY ||
-            process.env.VITE_SUPABASE_ANON_KEY;
-          const geminiKey = process.env["GEMINI_API_KEY"];
-
+          const geminiKey = process.env["GEMINI_API_KEY"] || process.env["GOOGLE_GENERATIVE_AI_API_KEY"];
           if (!geminiKey) {
-            return jsonResponse(
-              { error: "GEMINI_API_KEY não configurada no servidor" },
-              400,
-            );
-          }
-
-          if (!supabaseUrl || !publishableKey) {
-            return jsonResponse(
-              { error: "Variáveis do Supabase não configuradas no servidor" },
-              500,
-            );
-          }
-
-          // ─── Supabase client ────────────────────────────────
-          const supabase = createClient(supabaseUrl, publishableKey, {
-            global: { headers: { Authorization: authHeader } },
-            auth: {
-              storage: undefined,
-              persistSession: false,
-              autoRefreshToken: false,
-            },
-          });
-
-          const {
-            data: { user },
-            error: userError,
-          } = await supabase.auth.getUser();
-          if (userError || !user) {
-            return jsonResponse({ error: "Unauthorized" }, 401);
+            return jsonResponse({ error: "GEMINI_API_KEY não configurada no servidor" }, 400);
           }
 
           // ─── File validation ────────────────────────────────
@@ -94,50 +40,24 @@ export const Route = createFileRoute("/api/import-extrato")({
             return jsonResponse({ error: "Arquivo não encontrado no upload" }, 400);
           }
 
-          const maxBytes = 15 * 1024 * 1024;
-          if (file.size > maxBytes) {
-            return jsonResponse({ error: "Arquivo muito grande (máx 15 MB)" }, 400);
-          }
-
-          // ─── Convert file to base64 & Data URL ──────────────
-          const base64 = await fileToBase64(file);
-          const dataUrl = `data:${file.type};base64,${base64}`;
-
           // ─── Optional PDF text extraction ───────────────────
           let rawText = "";
           if (file.type === "application/pdf") {
             try {
               rawText = await extractPdfText(file);
-            } catch {
-              rawText = "";
+            } catch (err) {
+              console.warn("Falha na extração direta de texto do PDF:", err);
             }
           }
 
-          // ─── Safe SDK init ──────────────────────────────────
-       let googleProvider: any;
-try {
-  const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
-  googleProvider = createGoogleGenerativeAI({
-    apiKey: geminiKey,
-  });
-} catch (sdkErr: any) {
-  console.error("Failed to init Google Gemini SDK:", sdkErr);
-  return jsonResponse(
-    { error: `Falha ao inicializar o SDK do Gemini: ${sdkErr?.message ?? String(sdkErr)}` },
-    500,
-  );
-}
-
-          // ─── Build AI request content ───────────────────────
-          const year = new Date().getFullYear();
-          const prompt = SYSTEM_PROMPT.replace("o ano atual", `o ano atual ${year}`);
+          const base64 = await fileToBase64(file);
+          const dataUrl = `data:${file.type};base64,${base64}`;
 
           const userContent: any[] = [];
-
-          if (rawText && rawText.trim().length > 0) {
+          if (rawText && rawText.trim().length > 10) {
             userContent.push({
               type: "text",
-              text: `Texto extraído do documento:\n\n${rawText}\n\nExtraia todas as transações conforme as instruções.`,
+              text: `Texto do documento:\n${rawText}\n\nExtraia todas as transações financeiras.`,
             });
           } else {
             userContent.push({
@@ -150,59 +70,58 @@ try {
             });
           }
 
-          // ─── Call Gemini ────────────────────────────────────
+          // ─── Safe SDK Call ──────────────────────────────────
+          let responseText = "";
+          try {
+            const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+            const { generateText } = await import("ai");
+
+            const google = createGoogleGenerativeAI({ apiKey: geminiKey });
+
+            // Usando o alias resiliente do Google
+            const result = await generateText({
+              model: google("gemini-flash-latest"),
+              system: SYSTEM_PROMPT,
+              messages: [{ role: "user", content: userContent }],
+            });
+
+            responseText = result.text.trim();
+          } catch (aiErr: any) {
+            console.error("Gemini SDK Call Failed:", aiErr);
+            return jsonResponse(
+              { error: `Erro na API do Gemini: ${aiErr?.message ?? String(aiErr)}` },
+              502
+            );
+          }
+
+          // ─── Parse JSON Response ────────────────────────────
           let itens: ExtractedItem[] = [];
-try {
-  const { generateText } = await import("ai");
+          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              const parsed = JSON.parse(jsonMatch[0]);
+              itens = parsed.itens ?? [];
+            } catch (pErr) {
+              console.error("JSON parse error:", pErr);
+            }
+          }
 
-  // Lista de modelos na ordem de preferência (se 3.8-flash estiver sobrecarregado, usa 3.5-flash-lite)
-  const modelsToTry = [
-    googleProvider("gemini-3.8-flash"),
-    googleProvider("gemini-3.5-flash-lite"),
-  ];
-
-  let resultText = "";
-  let lastError: any = null;
-
-  for (const selectedModel of modelsToTry) {
-    try {
-      const result = await generateText({
-        model: selectedModel,
-        system: prompt,
-        messages: [{ role: "user", content: userContent }],
-        maxRetries: 2, // Tenta automaticamente até 2 vezes antes de desistir
-      });
-      resultText = result.text.trim();
-      if (resultText) break; // Sucesso!
-    } catch (err: any) {
-      lastError = err;
-      console.warn("Modelo falhou ou está sob alta demanda, tentando o próximo modelo...", err?.message);
-    }
-  }
-
-          // ─── Clean & validate extracted items ──────────────
           const clean = itens
-            .filter(
-              (i) =>
-                i &&
-                typeof i.valor === "number" &&
-                i.valor > 0 &&
-                (i.tipo === "receita" || i.tipo === "despesa"),
-            )
+            .filter((i) => i && typeof i.valor === "number" && i.valor > 0)
             .map((i) => ({
               data: i.data ?? "",
               descricao: String(i.descricao ?? "").trim() || "Sem descrição",
               valor: Math.abs(Number(i.valor)),
-              tipo: i.tipo,
+              tipo: i.tipo === "receita" ? "receita" : "despesa",
               categoria: i.categoria || "Outros",
             }));
 
           return jsonResponse({ itens: clean }, 200);
         } catch (err: any) {
-          console.error("[import-extrato] Unhandled error:", err);
+          console.error("[import-extrato] Fatal Server Error:", err);
           return jsonResponse(
-            { error: err?.message ?? String(err) ?? "Erro interno do servidor" },
-            500,
+            { error: err?.message ?? "Erro interno do servidor" },
+            500
           );
         }
       },
@@ -228,24 +147,20 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 async function extractPdfText(file: File): Promise<string> {
-  try {
-    const pdfjs: any = await import(
-      /* @vite-ignore */ "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs"
-    );
-    pdfjs.GlobalWorkerOptions.workerSrc =
-      "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+  const pdfjs: any = await import(
+    /* @vite-ignore */ "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs"
+  );
+  pdfjs.GlobalWorkerOptions.workerSrc =
+    "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
 
-    const buffer = await file.arrayBuffer();
-    const pdf = await pdfjs.getDocument({ data: buffer }).promise;
-    let fullText = "";
-    const maxPages = Math.min(pdf.numPages, 10);
-    for (let p = 1; p <= maxPages; p++) {
-      const page = await pdf.getPage(p);
-      const content = await page.getTextContent();
-      fullText += content.items.map((item: any) => item.str).join(" ") + "\n";
-    }
-    return fullText;
-  } catch {
-    return "";
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: buffer }).promise;
+  let fullText = "";
+  const maxPages = Math.min(pdf.numPages, 10);
+  for (let p = 1; p <= maxPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    fullText += content.items.map((item: any) => item.str).join(" ") + "\n";
   }
+  return fullText;
 }
