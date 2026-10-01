@@ -78,14 +78,34 @@ export const Route = createFileRoute("/api/import-extrato")({
 
             const google = createGoogleGenerativeAI({ apiKey: geminiKey });
 
-            // Usando o alias resiliente do Google
-            const result = await generateText({
-              model: google("gemini-flash-latest"),
-              system: SYSTEM_PROMPT,
-              messages: [{ role: "user", content: userContent }],
-            });
+            // Lista de modelos a tentar em ordem caso o principal esteja sobrecarregado (503)
+            const modelsToTry = [
+              "gemini-flash-latest",
+              "gemini-2.5-flash",
+              "gemini-1.5-flash",
+            ];
 
-            responseText = result.text.trim();
+            let lastError: any = null;
+
+            for (const modelName of modelsToTry) {
+              try {
+                const result = await generateText({
+                  model: google(modelName),
+                  system: SYSTEM_PROMPT,
+                  messages: [{ role: "user", content: userContent }],
+                  maxRetries: 1,
+                });
+                responseText = result.text.trim();
+                if (responseText) break; // Sucesso!
+              } catch (err: any) {
+                lastError = err;
+                console.warn(`Modelo ${modelName} falhou ou está sobrecarregado. Tentando o próximo...`);
+              }
+            }
+
+            if (!responseText && lastError) {
+              throw lastError;
+            }
           } catch (aiErr: any) {
             console.error("Gemini SDK Call Failed:", aiErr);
             return jsonResponse(
