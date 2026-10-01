@@ -121,7 +121,7 @@ try {
     apiKey: geminiKey,
   });
   // Nome atualizado suportado pela v1beta do Google AI
-  model = google("gemini-2.0-flash"); 
+  model = google("gemini-3.8-flash"); 
 } catch (sdkErr: any) {
   console.error("Failed to init Google Gemini SDK:", sdkErr);
   return jsonResponse(
