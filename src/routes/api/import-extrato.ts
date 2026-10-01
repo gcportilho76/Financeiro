@@ -43,7 +43,7 @@ export const Route = createFileRoute("/api/import-extrato")({
             return jsonResponse({ error: "Unauthorized" }, 401);
           }
 
-          // ─── Env validation (early, explicit) ───────────────
+          // ─── Env validation ─────────────────────────────────
           const supabaseUrl =
             import.meta.env.VITE_SUPABASE_URL ||
             process.env.SUPABASE_URL ||
@@ -64,12 +64,12 @@ export const Route = createFileRoute("/api/import-extrato")({
 
           if (!supabaseUrl || !publishableKey) {
             return jsonResponse(
-              { error: "SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY (ou VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) não configurados no servidor" },
+              { error: "Variáveis do Supabase não configuradas no servidor" },
               500,
             );
           }
 
-          // ─── Supabase client (user-scoped) ──────────────────
+          // ─── Supabase client ────────────────────────────────
           const supabase = createClient(supabaseUrl, publishableKey, {
             global: { headers: { Authorization: authHeader } },
             auth: {
@@ -99,22 +99,9 @@ export const Route = createFileRoute("/api/import-extrato")({
             return jsonResponse({ error: "Arquivo muito grande (máx 15 MB)" }, 400);
           }
 
-          const allowedTypes = [
-            "application/pdf",
-            "image/png",
-            "image/jpeg",
-            "image/webp",
-            "image/gif",
-          ];
-          if (!allowedTypes.includes(file.type)) {
-            return jsonResponse(
-              { error: `Tipo de arquivo não suportado: ${file.type}. Use PDF, PNG, JPG ou WEBP.` },
-              400,
-            );
-          }
-
-          // ─── Convert file to base64 ─────────────────────────
+          // ─── Convert file to base64 & Data URL ──────────────
           const base64 = await fileToBase64(file);
+          const dataUrl = `data:${file.type};base64,${base64}`;
 
           // ─── Optional PDF text extraction ───────────────────
           let rawText = "";
@@ -129,8 +116,7 @@ export const Route = createFileRoute("/api/import-extrato")({
           // ─── Safe SDK init ──────────────────────────────────
           let model: any;
           try {
-            const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
-            const google = createGoogleGenerativeAI({ apiKey: geminiKey });
+            const { google } = await import("@ai-sdk/google");
             model = google("gemini-3.8-flash");
           } catch (sdkErr: any) {
             console.error("Failed to init Google Gemini SDK:", sdkErr);
@@ -146,21 +132,16 @@ export const Route = createFileRoute("/api/import-extrato")({
 
           const userContent: any[] = [];
 
-          // Adiciona o texto extraído do PDF ou instrução simples
-          if (rawText) {
+          if (rawText && rawText.trim().length > 0) {
             userContent.push({
               type: "text",
-              text: `Texto extraído do documento:\n\n${rawText}\n\nExtraia todas as transações conforme as instruções do sistema.`,
+              text: `Texto extraído do documento:\n\n${rawText}\n\nExtraia todas as transações conforme as instruções.`,
             });
           } else {
             userContent.push({
               type: "text",
               text: "Extraia todas as transações financeiras deste documento.",
             });
-          }
-
-          // Se for imagem ou PDF sem texto extraído, adiciona como image/dataUrl
-          if (file.type.startsWith("image/") || !rawText) {
             userContent.push({
               type: "image",
               image: dataUrl,
@@ -177,17 +158,7 @@ export const Route = createFileRoute("/api/import-extrato")({
               messages: [
                 {
                   role: "user",
-                  content: [
-                    {
-                      type: "text",
-                      text: userPromptText,
-                    },
-                    {
-                      type: "file",
-                      data: base64,
-                      mimeType: file.type,
-                    },
-                  ],
+                  content: userContent,
                 },
               ],
             });
@@ -227,7 +198,6 @@ export const Route = createFileRoute("/api/import-extrato")({
 
           return jsonResponse({ itens: clean }, 200);
         } catch (err: any) {
-          // ─── Global catch-all ────────────────────────────────
           console.error("[import-extrato] Unhandled error:", err);
           return jsonResponse(
             { error: err?.message ?? String(err) ?? "Erro interno do servidor" },
