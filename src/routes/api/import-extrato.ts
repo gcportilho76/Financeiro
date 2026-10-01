@@ -131,8 +131,8 @@ export const Route = createFileRoute("/api/import-extrato")({
           let model: any;
           try {
             const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
-  const google = createGoogleGenerativeAI({ apiKey: geminiKey });
-  model = google("gemini-3.8-flash");
+            const google = createGoogleGenerativeAI({ apiKey: geminiKey });
+            model = google("gemini-3.8-flash");
 } catch (sdkErr: any) {
           } catch (sdkErr: any) {
             console.error("Failed to init Google Gemini SDK:", sdkErr);
