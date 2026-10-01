@@ -144,9 +144,27 @@ export const Route = createFileRoute("/api/import-extrato")({
           const year = new Date().getFullYear();
           const prompt = SYSTEM_PROMPT.replace("o ano atual", `o ano atual ${year}`);
 
-          let userPromptText = "Extraia todas as transações financeiras deste documento.";
-          if (rawText.trim()) {
-            userPromptText = `Texto extraído do documento PDF (use como referência):\n\n${rawText}\n\nAgora extraia todas as transações do documento.`;
+          const userContent: any[] = [];
+
+          // Adiciona o texto extraído do PDF ou instrução simples
+          if (rawText) {
+            userContent.push({
+              type: "text",
+              text: `Texto extraído do documento:\n\n${rawText}\n\nExtraia todas as transações conforme as instruções do sistema.`,
+            });
+          } else {
+            userContent.push({
+              type: "text",
+              text: "Extraia todas as transações financeiras deste documento.",
+            });
+          }
+
+          // Se for imagem ou PDF sem texto extraído, adiciona como image/dataUrl
+          if (file.type.startsWith("image/") || !rawText) {
+            userContent.push({
+              type: "image",
+              image: dataUrl,
+            });
           }
 
           // ─── Call Gemini ────────────────────────────────────
