@@ -1244,7 +1244,7 @@ function CartaoRegistryChip({ item, onChanged }: any) {
         <CreditCard className="w-3.5 h-3.5 text-info" />
         <span className="font-medium">{item.nome}</span>
         {item.banco && <span className="text-xs text-muted-foreground">· {item.banco}</span>}
-        <span className="text-[10px] text-muted-foreground">· Limite {BRL(Number(item.limite ?? 0))} · Fecha dia {item.dia_fechamento ?? "—"}</span>
+        <span className="text-[10px] text-muted-foreground">· Limite {BRL(Number(item.limite ?? 0))} · Fecha dia {item.dia_fechamento ?? "—"} · Vence dia {item.dia_vencimento ?? "—"}</span>
         <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEditOpen(true)}><Edit2 className="w-3.5 h-3.5" /></Button>
         <Button size="icon" variant="ghost" className="h-6 w-6" onClick={excluir}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>
       </div>
@@ -1254,21 +1254,23 @@ function CartaoRegistryChip({ item, onChanged }: any) {
 }
 
 function CartaoRegistryForm({ open, onOpenChange, editing, onSaved }: any) {
-  const empty = { nome: "", banco: "", limite: "0", dia_fechamento: "1" };
+  const empty = { nome: "", banco: "", limite: "0", dia_fechamento: "1", dia_vencimento: "10" };
   const [form, setForm] = useState<any>(empty);
   useEffect(() => {
     if (!open) return;
     setForm(editing ? {
       nome: editing.nome ?? "", banco: editing.banco ?? "",
       limite: String(editing.limite ?? 0), dia_fechamento: String(editing.dia_fechamento ?? 1),
+      dia_vencimento: String(editing.dia_vencimento ?? 10),
     } : empty);
   }, [open, editing]); // eslint-disable-line
   async function salvar() {
     if (!form.nome.trim()) return toast.error("Informe o nome do cartão");
-    const dia = Math.max(1, Math.min(31, Number(form.dia_fechamento) || 1));
+    const diaFech = Math.max(1, Math.min(31, Number(form.dia_fechamento) || 1));
+    const diaVenc = Math.max(1, Math.min(31, Number(form.dia_vencimento) || 10));
     const payload: any = {
       nome: form.nome.trim(), banco: form.banco.trim() || null,
-      limite: Number(form.limite) || 0, dia_fechamento: dia,
+      limite: Number(form.limite) || 0, dia_fechamento: diaFech, dia_vencimento: diaVenc,
     };
     if (editing?.id) {
       const { error } = await (supabase.from as any)("cartoes_registry").update(payload).eq("id", editing.id);
@@ -1287,9 +1289,10 @@ function CartaoRegistryForm({ open, onOpenChange, editing, onSaved }: any) {
         <div className="space-y-3">
           <div><Label>Nome do Cartão</Label><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Santander Black" /></div>
           <div><Label>Banco / Emissor</Label><Input value={form.banco} onChange={(e) => setForm({ ...form, banco: e.target.value })} placeholder="Ex: Santander" /></div>
+          <div><Label>Limite / Meta de Gastos (R$)</Label><Input type="number" step="0.01" value={form.limite} onChange={(e) => setForm({ ...form, limite: e.target.value })} /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label>Limite / Meta de Gastos (R$)</Label><Input type="number" step="0.01" value={form.limite} onChange={(e) => setForm({ ...form, limite: e.target.value })} /></div>
             <div><Label>Dia de Fechamento da Fatura</Label><Input type="number" min="1" max="31" value={form.dia_fechamento} onChange={(e) => setForm({ ...form, dia_fechamento: e.target.value })} /></div>
+            <div><Label>Dia de Vencimento da Fatura</Label><Input type="number" min="1" max="31" value={form.dia_vencimento} onChange={(e) => setForm({ ...form, dia_vencimento: e.target.value })} /></div>
           </div>
         </div>
         <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
@@ -1442,7 +1445,7 @@ function CartaoForm({ open, onOpenChange, comp, editing, registry, onSaved }: an
             </Select>
             {diaFech > 0 && (
               <p className="text-[10px] text-muted-foreground mt-1">
-                Fechamento dia {diaFech}. {empurrar ? "Como a data é > fechamento, sugerimos Fatura Seguinte." : "Dentro do ciclo atual."}
+                Fechamento dia {diaFech} · Vencimento dia {Number(cartaoReg?.dia_vencimento) || "—"}. {empurrar ? "Como a data é após o fechamento, sugerimos Fatura Seguinte." : "Dentro do ciclo atual."}
               </p>
             )}
           </div>
