@@ -711,6 +711,10 @@ function Row({ k, v, color, bold }: any) {
 function ReceitasView({ data, comp, onSaved }: any) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
+  const [sel, setSel] = useState<Record<string, boolean>>({});
+  const allIds = data.receitas.map((r: any) => r.id);
+  const allSelected = allIds.length > 0 && allIds.every((id: string) => sel[id]);
+  const selectedIds = allIds.filter((id: string) => sel[id]);
 
   async function clonar(r: any) {
     const { id, created_at, ...rest } = r;
@@ -723,17 +727,46 @@ function ReceitasView({ data, comp, onSaved }: any) {
     const { error } = await supabase.from("receitas").delete().eq("id", id);
     if (error) toast.error(error.message); else { toast.success("Excluído"); onSaved(); }
   }
+  async function excluirSelecionados() {
+    if (selectedIds.length === 0) return toast.error("Selecione ao menos um lançamento");
+    if (!confirm(`Excluir ${selectedIds.length} lançamento(s) de receita deste mês?`)) return;
+    const { error } = await supabase.from("receitas").delete().in("id", selectedIds);
+    if (error) toast.error(error.message); else { toast.success(`${selectedIds.length} excluído(s)`); setSel({}); onSaved(); }
+  }
+  async function excluirMesCompetencia() {
+    if (!confirm(`Apagar TODAS as receitas de ${formatCompetencia(comp)}? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from("receitas").delete().eq("competencia", comp);
+    if (error) toast.error(error.message); else { toast.success("Receitas do mês excluídas"); setSel({}); onSaved(); }
+  }
 
   return (
     <Card className="p-5 bg-card border-border">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h3 className="font-semibold flex items-center gap-2"><Banknote className="w-4 h-4 text-success" /> Receitas</h3>
-        <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Nova receita</Button>
+        <div className="flex gap-2 flex-wrap">
+          {data.receitas.length > 0 && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setSel(allSelected ? {} : Object.fromEntries(allIds.map((id: string) => [id, true])))}>
+                {allSelected ? "Desmarcar tudo" : "Selecionar tudo"}
+              </Button>
+              {selectedIds.length > 0 && (
+                <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirSelecionados}>
+                  <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir selecionados ({selectedIds.length})
+                </Button>
+              )}
+              <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirMesCompetencia}>
+                <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir todas do mês
+              </Button>
+            </>
+          )}
+          <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Nova receita</Button>
+        </div>
       </div>
       {data.receitas.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhuma receita neste mês.</p>}
       <div className="space-y-2">
         {data.receitas.map((r: any) => (
-          <div key={r.id} className="flex items-center gap-3 p-3 rounded-md bg-secondary/40 border border-border">
+          <div key={r.id} className={`flex items-center gap-3 p-3 rounded-md border ${sel[r.id] ? "bg-destructive/5 border-destructive/30" : "bg-secondary/40 border-border"}`}>
+            <Checkbox checked={!!sel[r.id]} onCheckedChange={(v) => setSel({ ...sel, [r.id]: !!v })} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-medium truncate">{r.descricao}</span>
@@ -815,6 +848,10 @@ function DespesasView({ data, comp, onSaved }: any) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [sel, setSel] = useState<Record<string, boolean>>({});
+  const allIds = data.despesas.map((d: any) => d.id);
+  const allSelected = allIds.length > 0 && allIds.every((id: string) => sel[id]);
+  const selectedIds = allIds.filter((id: string) => sel[id]);
 
   async function clonar(d: any) {
     const { id, created_at, ...rest } = d;
@@ -824,7 +861,6 @@ function DespesasView({ data, comp, onSaved }: any) {
   }
   async function deletar(id: string) {
     if (!confirm("Excluir?")) return;
-    // Rollback de amortização: se a despesa está vinculada a um evento, reverter contrato e remover evento
     const despesa = data.despesas.find((x: any) => x.id === id);
     if (despesa?.tipo === "amortizacao") {
       const { data: evs } = await (supabase.from as any)("consignados_eventos").select("*").eq("despesa_id", id);
@@ -843,13 +879,53 @@ function DespesasView({ data, comp, onSaved }: any) {
     const { error } = await supabase.from("despesas").delete().eq("id", id);
     if (error) toast.error(error.message); else { toast.success("Excluído"); onSaved(); }
   }
+  async function excluirSelecionados() {
+    if (selectedIds.length === 0) return toast.error("Selecione ao menos um lançamento");
+    if (!confirm(`Excluir ${selectedIds.length} lançamento(s) de despesa deste mês?`)) return;
+    for (const id of selectedIds) {
+      const despesa = data.despesas.find((x: any) => x.id === id);
+      if (despesa?.tipo === "amortizacao") {
+        const { data: evs } = await (supabase.from as any)("consignados_eventos").select("*").eq("despesa_id", id);
+        for (const ev of evs ?? []) {
+          const { data: c } = await supabase.from("consignados_contratos").select("*").eq("id", ev.contrato_id).maybeSingle();
+          if (c) {
+            await supabase.from("consignados_contratos").update({
+              total_parcelas: Number(c.total_parcelas) + Number(ev.parcelas_abatidas ?? 0),
+              saldo_devedor: Number(c.saldo_devedor) + Number(ev.reducao_bruta ?? 0),
+            }).eq("id", c.id);
+          }
+          await supabase.from("consignados_eventos").delete().eq("id", ev.id);
+        }
+      }
+    }
+    const { error } = await supabase.from("despesas").delete().in("id", selectedIds);
+    if (error) toast.error(error.message); else { toast.success(`${selectedIds.length} excluído(s)`); setSel({}); onSaved(); }
+  }
+  async function excluirMesCompetencia() {
+    if (!confirm(`Apagar TODAS as despesas de ${formatCompetencia(comp)}? Esta ação não pode ser desfeita.`)) return;
+    const amortizacoes = data.despesas.filter((d: any) => d.tipo === "amortizacao");
+    for (const d of amortizacoes) {
+      const { data: evs } = await (supabase.from as any)("consignados_eventos").select("*").eq("despesa_id", d.id);
+      for (const ev of evs ?? []) {
+        const { data: c } = await supabase.from("consignados_contratos").select("*").eq("id", ev.contrato_id).maybeSingle();
+        if (c) {
+          await supabase.from("consignados_contratos").update({
+            total_parcelas: Number(c.total_parcelas) + Number(ev.parcelas_abatidas ?? 0),
+            saldo_devedor: Number(c.saldo_devedor) + Number(ev.reducao_bruta ?? 0),
+          }).eq("id", c.id);
+        }
+        await supabase.from("consignados_eventos").delete().eq("id", ev.id);
+      }
+    }
+    const { error } = await supabase.from("despesas").delete().eq("competencia", comp);
+    if (error) toast.error(error.message); else { toast.success("Despesas do mês excluídas"); setSel({}); onSaved(); }
+  }
   async function togglePago(d: any) {
     const novo = d.status === "PAGO" ? "PENDENTE" : "PAGO";
     await supabase.from("despesas").update({ status: novo }).eq("id", d.id);
     onSaved();
   }
 
-  // visíveis: PENDENTES primeiro; dentro de cada grupo, mais recentes (created_at desc) no topo
   const visiveis = [...data.despesas].sort((a: any, b: any) => {
     const sa = a.status === "PENDENTE" ? 0 : 1;
     const sb = b.status === "PENDENTE" ? 0 : 1;
@@ -863,15 +939,31 @@ function DespesasView({ data, comp, onSaved }: any) {
     <Card className="p-5 bg-card border-border">
       <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h3 className="font-semibold flex items-center gap-2"><Receipt className="w-4 h-4 text-warning" /> Despesas</h3>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)}><Download className="w-4 h-4 mr-1" />Importar Fixas do Mês Anterior</Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => setImportOpen(true)}><Download className="w-4 h-4 mr-1" />Importar Fixas</Button>
+          {visiveis.length > 0 && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setSel(allSelected ? {} : Object.fromEntries(allIds.map((id: string) => [id, true])))}>
+                {allSelected ? "Desmarcar tudo" : "Selecionar tudo"}
+              </Button>
+              {selectedIds.length > 0 && (
+                <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirSelecionados}>
+                  <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir selecionados ({selectedIds.length})
+                </Button>
+              )}
+              <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirMesCompetencia}>
+                <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir todas do mês
+              </Button>
+            </>
+          )}
           <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Nova despesa</Button>
         </div>
       </div>
       {visiveis.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhuma despesa neste mês.</p>}
       <div className="space-y-2">
         {visiveis.map((d: any) => (
-          <div key={d.id} className="flex items-center gap-3 p-3 rounded-md bg-secondary/40 border border-border">
+          <div key={d.id} className={`flex items-center gap-3 p-3 rounded-md border ${sel[d.id] ? "bg-destructive/5 border-destructive/30" : "bg-secondary/40 border-border"}`}>
+            <Checkbox checked={!!sel[d.id]} onCheckedChange={(v) => setSel({ ...sel, [d.id]: !!v })} />
             <Checkbox checked={d.status === "PAGO"} onCheckedChange={() => togglePago(d)} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -1034,6 +1126,10 @@ function CartoesView({ data, comp, onSaved }: any) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [regOpen, setRegOpen] = useState(false);
+  const [sel, setSel] = useState<Record<string, boolean>>({});
+  const allCardIds = data.cartoes.map((c: any) => c.id);
+  const allCardSelected = allCardIds.length > 0 && allCardIds.every((id: string) => sel[id]);
+  const selectedCardIds = allCardIds.filter((id: string) => sel[id]);
 
   async function clonar(c: any) {
     const { id, created_at, ...rest } = c;
@@ -1045,6 +1141,17 @@ function CartoesView({ data, comp, onSaved }: any) {
     if (!confirm("Excluir?")) return;
     await supabase.from("cartoes_lancamentos").delete().eq("id", id);
     onSaved();
+  }
+  async function excluirSelecionados() {
+    if (selectedCardIds.length === 0) return toast.error("Selecione ao menos um lançamento");
+    if (!confirm(`Excluir ${selectedCardIds.length} lançamento(s) de cartão deste mês?`)) return;
+    const { error } = await supabase.from("cartoes_lancamentos").delete().in("id", selectedCardIds);
+    if (error) toast.error(error.message); else { toast.success(`${selectedCardIds.length} excluído(s)`); setSel({}); onSaved(); }
+  }
+  async function excluirMesCompetencia() {
+    if (!confirm(`Apagar TODOS os lançamentos de cartão de ${formatCompetencia(comp)}? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from("cartoes_lancamentos").delete().eq("competencia", comp);
+    if (error) toast.error(error.message); else { toast.success("Lançamentos do mês excluídos"); setSel({}); onSaved(); }
   }
   async function toggleAtivo(c: any) {
     await supabase.from("cartoes_lancamentos").update({ ativo: !c.ativo }).eq("id", c.id);
@@ -1125,9 +1232,26 @@ function CartoesView({ data, comp, onSaved }: any) {
       <Card className="p-5 bg-card border-border">
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
           <h3 className="font-semibold flex items-center gap-2">Lançamentos — Total ativo: <span className="tabular text-info">{BRL(totalAtivos)}</span></h3>
-          <Button onClick={() => { setEditing(null); setOpen(true); }} disabled={registry.length === 0} title={registry.length === 0 ? "Cadastre um cartão primeiro" : ""}>
-            <Plus className="w-4 h-4 mr-1" />Novo lançamento
-          </Button>
+          <div className="flex gap-2 flex-wrap">
+            {data.cartoes.length > 0 && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setSel(allCardSelected ? {} : Object.fromEntries(allCardIds.map((id: string) => [id, true])))}>
+                  {allCardSelected ? "Desmarcar tudo" : "Selecionar tudo"}
+                </Button>
+                {selectedCardIds.length > 0 && (
+                  <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirSelecionados}>
+                    <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir selecionados ({selectedCardIds.length})
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirMesCompetencia}>
+                  <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir todas do mês
+                </Button>
+              </>
+            )}
+            <Button onClick={() => { setEditing(null); setOpen(true); }} disabled={registry.length === 0} title={registry.length === 0 ? "Cadastre um cartão primeiro" : ""}>
+              <Plus className="w-4 h-4 mr-1" />Novo lançamento
+            </Button>
+          </div>
         </div>
         <p className="text-xs text-muted-foreground mb-3">Soma do bloco = soma exata dos itens ativos. Desative a fatura mãe quando detalhar os itens.</p>
         {data.cartoes.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhum lançamento de cartão.</p>}
@@ -1176,7 +1300,8 @@ function CartoesView({ data, comp, onSaved }: any) {
                     if (sa !== sb) return sa - sb;
                     return new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
                   }).map((c: any) => (
-                    <div key={c.id} className={`flex items-center gap-3 p-3 rounded-md border ${c.consolidado ? "bg-warning/10 border-warning/40" : c.ativo ? "bg-secondary/40 border-border" : "bg-secondary/10 border-border/40 opacity-60"}`}>
+                    <div key={c.id} className={`flex items-center gap-3 p-3 rounded-md border ${sel[c.id] ? "bg-destructive/5 border-destructive/30" : c.consolidado ? "bg-warning/10 border-warning/40" : c.ativo ? "bg-secondary/40 border-border" : "bg-secondary/10 border-border/40 opacity-60"}`}>
+                      <Checkbox checked={!!sel[c.id]} onCheckedChange={(v) => setSel({ ...sel, [c.id]: !!v })} />
                       <Checkbox checked={c.ativo} onCheckedChange={() => toggleAtivo(c)} title="Ativo na soma" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
