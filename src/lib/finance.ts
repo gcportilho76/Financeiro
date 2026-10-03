@@ -47,7 +47,7 @@ export type Contrato = {
 };
 
 export const BRL = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  (Number.isFinite(v) ? v : 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export function diasNoMes(competencia: string) {
   // competencia 'YYYY-MM-01'
@@ -107,6 +107,13 @@ export function calcular({
   reservasGuardadas?: number;
   salarioBase?: number;
 }) {
+  const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+  const saldoIni = num(saldoInicial);
+  const reservaMin = num(reservaMinima);
+  const reservasGuard = num(reservasGuardadas);
+  const salarioBaseNum = num(salarioBase);
+
   // Consignados são impacto neutro - já não contam como despesa cash
   const despesasCash = despesas.filter((d) => d.tipo !== "consignado");
 
@@ -129,38 +136,38 @@ export function calcular({
 
   const recebidos = receitas
     .filter((r) => r.status === "RECEBIDO")
-    .reduce((s, r) => s + Number(r.valor), 0);
+    .reduce((s, r) => s + num(r.valor), 0);
   const previstos = receitas
     .filter((r) => r.status === "PREVISTO")
-    .reduce((s, r) => s + Number(r.valor), 0);
+    .reduce((s, r) => s + num(r.valor), 0);
   // Mês futuro sem nenhuma receita lançada: projeta o salário base para
   // evitar Resultado do Mês com Receita = R$ 0,00 (saldo negativo irreal)
   const receitaProjetada =
-    modoPlanejamento && receitas.length === 0 ? Math.max(0, Number(salarioBase)) : 0;
+    modoPlanejamento && receitas.length === 0 ? Math.max(0, salarioBaseNum) : 0;
   const totalReceitas = recebidos + previstos + receitaProjetada;
 
   const despPagas = despesasCash
     .filter((d) => d.status === "PAGO")
-    .reduce((s, d) => s + Number(d.valor), 0);
+    .reduce((s, d) => s + num(d.valor), 0);
   const despPendentes = despesasCash
     .filter((d) => d.status === "PENDENTE")
-    .reduce((s, d) => s + Number(d.valor), 0);
+    .reduce((s, d) => s + num(d.valor), 0);
   const totalDespesasCash = despPagas + despPendentes;
 
   const cartoesAtivos = cartoes.filter((c) => c.ativo);
   const cartPagos = cartoesAtivos
     .filter((c) => c.status === "PAGO")
-    .reduce((s, c) => s + Number(c.valor), 0);
+    .reduce((s, c) => s + num(c.valor), 0);
   const cartPendentes = cartoesAtivos
     .filter((c) => c.status === "PENDENTE")
-    .reduce((s, c) => s + Number(c.valor), 0);
+    .reduce((s, c) => s + num(c.valor), 0);
   const totalCartoes = cartPagos + cartPendentes;
 
   // Saldo Vivo: apenas RECEBIDO e PAGO, menos o que foi guardado em caixinhas
-  const saldoVivo = saldoInicial + recebidos - despPagas - cartPagos - reservasGuardadas;
+  const saldoVivo = saldoIni + recebidos - despPagas - cartPagos - reservasGuard;
 
   const totalPendentesGeral = despPendentes + cartPendentes;
-  const margemBruta = saldoVivo - totalPendentesGeral - reservaMinima;
+  const margemBruta = saldoVivo - totalPendentesGeral - reservaMin;
   const margemLivre = Math.max(0, margemBruta);
   const caixaLimite = margemBruta < 0;
 
@@ -168,7 +175,7 @@ export function calcular({
 
   // Resultado Projetado = fluxo puro de caixa (reservas continuam sendo dinheiro seu, não são "gasto")
   const resultadoMes =
-    saldoInicial + totalReceitas - totalDespesasCash - totalCartoes;
+    saldoIni + totalReceitas - totalDespesasCash - totalCartoes;
 
   // Patrimônio Total = saldo projetado (inclui o valor parado nas caixinhas)
   const patrimonioTotal = resultadoMes;
@@ -193,7 +200,7 @@ export function calcular({
     cartPendentes,
     totalCartoes,
     resultadoMes,
-    reservasGuardadas,
+    reservasGuardadas: reservasGuard,
     patrimonioTotal,
   };
 }

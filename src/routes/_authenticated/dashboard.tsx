@@ -87,7 +87,7 @@ function Dashboard() {
   const profile = data.profile ?? { saldo_inicial: 0, reserva_minima: 0 };
   const saldoInicialMes = Number(data.saldoInicialMes ?? 0);
   const reservasGuardadas = ((data as any).reservas ?? []).reduce(
-    (s: number, r: any) => s + Number(r.valor ?? 0), 0,
+    (s: number, r: any) => s + (Number(r.valor) || 0), 0,
   );
   const calc = calcular({
     saldoInicial: saldoInicialMes,
