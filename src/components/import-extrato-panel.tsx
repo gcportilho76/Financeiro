@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Upload, FileText, Loader as Loader2, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Trash2, Save, RefreshCw } from "lucide-react";
+import { Upload, FileText, Loader as Loader2, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Trash2, Save, RefreshCw, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { BRL, hojeISO, competenciaAtual } from "@/lib/finance";
+import { BRL, hojeISO, competenciaAtual, formatCompetencia, proxCompetencia } from "@/lib/finance";
 
 type ExtractedItem = {
   data: string;
@@ -56,6 +56,19 @@ const CATEGORIAS = [
   "Outros",
 ];
 
+function gerarMesesDisponiveis(compAtual: string) {
+  const meses: { value: string; label: string }[] = [];
+  const [anoAtual, mesAtual] = compAtual.split("-").map(Number);
+  // 3 meses atrás até 3 meses à frente
+  for (let i = -3; i <= 3; i++) {
+    const d = new Date(anoAtual, mesAtual - 1 + i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+    meses.push({ value, label: formatCompetencia(value) });
+  }
+  return meses;
+}
+const MESES_DISPONIVEIS = gerarMesesDisponiveis(competenciaAtual());
+
 export function ImportExtratoPanel({
   comp,
   onSaved,
@@ -73,6 +86,8 @@ export function ImportExtratoPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cartoesRegistry, setCartoesRegistry] = useState<any[]>([]);
   const [cartaoPadrao, setCartaoPadrao] = useState<string>("");
+  const [compDestino, setCompDestino] = useState<string>(comp);
+  useEffect(() => { setCompDestino(comp); }, [comp]);
 
   // Carrega cartões cadastrados ao abrir
   async function loadCartoes() {
@@ -181,7 +196,7 @@ export function ImportExtratoPanel({
         if (r.tipo === "receita") {
           receitas.push({
             user_id: uid,
-            competencia: comp,
+            competencia: compDestino,
             data: dataLanc,
             descricao: r.descricao,
             categoria: r.categoria || "Outros",
@@ -191,7 +206,7 @@ export function ImportExtratoPanel({
         } else if (r.categoria === "Cartão" && r._cartao) {
           cartoesLanc.push({
             user_id: uid,
-            competencia: comp,
+            competencia: compDestino,
             cartao: r._cartao,
             descricao: r.descricao,
             categoria: r.categoria,
@@ -204,7 +219,7 @@ export function ImportExtratoPanel({
         } else {
           despesas.push({
             user_id: uid,
-            competencia: comp,
+            competencia: compDestino,
             data_venc: dataLanc,
             descricao: r.descricao,
             categoria: r.categoria || "Outros",
@@ -320,6 +335,23 @@ export function ImportExtratoPanel({
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* Seletor de mês de destino */}
+            <div className="flex items-center gap-2 p-3 rounded-md bg-info/10 border border-info/30 text-sm">
+              <Calendar className="w-4 h-4 text-info shrink-0" />
+              <span className="text-muted-foreground">Mês de destino (orçamento):</span>
+              <Select value={compDestino} onValueChange={setCompDestino}>
+                <SelectTrigger className="h-8 w-44 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MESES_DISPONIVEIS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">Os lançamentos serão salvos neste mês.</span>
+            </div>
+
             {/* Upload area */}
             <div
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
