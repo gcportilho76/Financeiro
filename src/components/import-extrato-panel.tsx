@@ -37,6 +37,7 @@ type RowItem = ExtractedItem & {
   _id: string;
   _selected: boolean;
   _status: "PREVISTO" | "RECEBIDO" | "PAGO" | "PENDENTE";
+  _cartao: string; // nome do cartão cadastrado, se aplicável
 };
 
 const CATEGORIAS = [
@@ -70,6 +71,15 @@ export function ImportExtratoPanel({
   const [saving, setSaving] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [cartoesRegistry, setCartoesRegistry] = useState<any[]>([]);
+  const [cartaoPadrao, setCartaoPadrao] = useState<string>("");
+
+  // Carrega cartões cadastrados ao abrir
+  async function loadCartoes() {
+    const { data } = await (supabase.from as any)("cartoes_registry").select("*").order("nome");
+    setCartoesRegistry(data ?? []);
+    if (data && data.length > 0 && !cartaoPadrao) setCartaoPadrao(data[0].nome);
+  }
 
   const reset = useCallback(() => {
     setFile(null);
@@ -134,6 +144,7 @@ export function ImportExtratoPanel({
         _id: `${Date.now()}-${i}`,
         _selected: true,
         _status: item.tipo === "receita" ? "PREVISTO" : "PENDENTE",
+        _cartao: item.categoria === "Cartão" ? cartaoPadrao : "",
       }));
 
       setRows(newRows);
@@ -163,6 +174,7 @@ export function ImportExtratoPanel({
 
       const receitas: any[] = [];
       const despesas: any[] = [];
+      const cartoesLanc: any[] = [];
 
       for (const r of selecionados) {
         const dataLanc = r.data && r.data.length === 10 ? r.data : hojeISO();
@@ -175,6 +187,19 @@ export function ImportExtratoPanel({
             categoria: r.categoria || "Outros",
             valor: r.valor,
             status: r._status === "RECEBIDO" ? "RECEBIDO" : "PREVISTO",
+          });
+        } else if (r.categoria === "Cartão" && r._cartao) {
+          cartoesLanc.push({
+            user_id: uid,
+            competencia: comp,
+            cartao: r._cartao,
+            descricao: r.descricao,
+            categoria: r.categoria,
+            valor: r.valor,
+            data_compra: dataLanc,
+            status: r._status === "PAGO" ? "PAGO" : "PENDENTE",
+            fatura: "atual",
+            ativo: true,
           });
         } else {
           despesas.push({
@@ -201,16 +226,21 @@ export function ImportExtratoPanel({
         const { error } = await supabase.from("despesas").insert(despesas);
         if (error) erroMsg = error.message;
       }
+      if (!erroMsg && cartoesLanc.length) {
+        const { error } = await supabase.from("cartoes_lancamentos").insert(cartoesLanc);
+        if (error) erroMsg = error.message;
+      }
 
       if (erroMsg) {
         toast.error(erroMsg);
       } else {
         const totalRec = receitas.reduce((s, r) => s + r.valor, 0);
         const totalDesp = despesas.reduce((s, d) => s + d.valor, 0);
+        const totalCart = cartoesLanc.reduce((s, c) => s + c.valor, 0);
         toast.success(
-          `${receitas.length} receita(s) (${BRL(totalRec)}) e ${despesas.length} despesa(s) (${BRL(
+          `${receitas.length} receita(s) (${BRL(totalRec)}), ${despesas.length} despesa(s) (${BRL(
             totalDesp,
-          )}) importadas.`,
+          )})${cartoesLanc.length > 0 ? ` e ${cartoesLanc.length} lançamento(s) de cartão (${BRL(totalCart)})` : ""} importados.`,
         );
         qc.invalidateQueries({ queryKey: ["fin"] });
         reset();
@@ -283,7 +313,7 @@ export function ImportExtratoPanel({
         </div>
       </Card>
 
-      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); if (o) loadCartoes(); }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Importar Extrato/Fatura com IA</DialogTitle>
@@ -363,7 +393,22 @@ export function ImportExtratoPanel({
                   <div className="text-sm font-medium">
                     {rows.length} transação(ões) encontrada(s) — revise e selecione
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {cartoesRegistry.length > 0 && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <span>Cartão padrão:</span>
+                        <Select value={cartaoPadrao} onValueChange={setCartaoPadrao}>
+                          <SelectTrigger className="h-7 w-40 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {cartoesRegistry.map((cr: any) => (
+                              <SelectItem key={cr.id} value={cr.nome}>{cr.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <Button size="sm" variant="outline" onClick={() => toggleAll(true)}>
                       Selecionar todas
                     </Button>
@@ -382,6 +427,7 @@ export function ImportExtratoPanel({
                         <th className="p-2 text-left">Descrição</th>
                         <th className="p-2 text-left">Tipo</th>
                         <th className="p-2 text-left">Categoria</th>
+                        <th className="p-2 text-left">Cartão</th>
                         <th className="p-2 text-left">Status</th>
                         <th className="p-2 text-right">Valor</th>
                         <th className="p-2 w-8"></th>
@@ -426,7 +472,7 @@ export function ImportExtratoPanel({
                           <td className="p-2">
                             <Select
                               value={r.categoria}
-                              onValueChange={(v) => updateRow(r._id, { categoria: v })}
+                              onValueChange={(v) => updateRow(r._id, { categoria: v, _cartao: v === "Cartão" ? (r._cartao || cartaoPadrao) : "" })}
                             >
                               <SelectTrigger className="h-8 w-36 text-xs">
                                 <SelectValue />
@@ -439,6 +485,25 @@ export function ImportExtratoPanel({
                                 ))}
                               </SelectContent>
                             </Select>
+                          </td>
+                          <td className="p-2">
+                            {r.categoria === "Cartão" ? (
+                              <Select
+                                value={r._cartao || cartaoPadrao}
+                                onValueChange={(v) => updateRow(r._id, { _cartao: v })}
+                              >
+                                <SelectTrigger className="h-8 w-36 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {cartoesRegistry.map((cr: any) => (
+                                    <SelectItem key={cr.id} value={cr.nome}>{cr.nome}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
                           </td>
                           <td className="p-2">
                             <Select
@@ -493,7 +558,7 @@ export function ImportExtratoPanel({
                     </tbody>
                     <tfoot>
                       <tr className="bg-muted/30 font-medium">
-                        <td colSpan={6} className="p-2 text-right text-xs">
+                        <td colSpan={7} className="p-2 text-right text-xs">
                           Selecionadas ({selecionados.length}):
                         </td>
                         <td className="p-2 text-right tabular text-sm" colSpan={2}>

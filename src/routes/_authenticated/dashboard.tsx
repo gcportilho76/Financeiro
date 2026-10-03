@@ -1600,6 +1600,27 @@ function ConsignadosView({ data, comp, onSaved }: any) {
     if (error) toast.error(error.message); else { toast.success("Contrato excluído"); onSaved(); }
   }
 
+  async function avancarParcela(c: any) {
+    if (c.parcela_atual >= c.total_parcelas) return toast.error("Não há parcelas restantes");
+    if (!confirm(`Confirmar desconto de ${BRL(Number(c.valor_parcela))} no contracheque e avançar 1 parcela de "${c.nome}"?\n\nParcela atual: ${c.parcela_atual}/${c.total_parcelas}`)) return;
+    const novaParcela = c.parcela_atual + 1;
+    const novoSaldo = Math.max(0, Number(c.saldo_devedor) - Number(c.valor_parcela));
+    const { error } = await supabase.from("consignados_contratos")
+      .update({ parcela_atual: novaParcela, saldo_devedor: novoSaldo, ultimo_avanco: comp })
+      .eq("id", c.id);
+    if (error) return toast.error(error.message);
+    await (supabase.from as any)("consignados_eventos").insert({
+      user_id: data.userId, contrato_id: c.id, competencia: comp,
+      tipo: "avanco", parcelas_abatidas: 1,
+    });
+    if (novaParcela >= c.total_parcelas) {
+      toast.success(`"${c.nome}" quitado! ${c.total_parcelas}/${c.total_parcelas} parcelas pagas.`);
+    } else {
+      toast.success(`Parcela avançada: ${novaParcela}/${c.total_parcelas} · ${c.total_parcelas - novaParcela} restantes`);
+    }
+    onSaved();
+  }
+
   return (
     <Card className="p-5 bg-card border-border">
       <div className="flex justify-between items-center mb-4">
@@ -1627,6 +1648,11 @@ function ConsignadosView({ data, comp, onSaved }: any) {
               <div className="flex justify-between items-center text-sm flex-wrap gap-2">
                 <span className="text-muted-foreground">Parcela: <span className="text-foreground font-medium tabular">{BRL(Number(c.valor_parcela))}</span></span>
                 <div className="flex gap-2">
+                  {c.ativo && c.parcela_atual < c.total_parcelas && (
+                    <Button size="sm" variant="outline" className="border-success/40 text-success hover:bg-success/10" onClick={() => avancarParcela(c)} title="Confirmar desconto no contracheque e avançar 1 parcela">
+                      <ArrowUpFromLine className="w-4 h-4 mr-1" />Abater Parcela
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={() => setAmortOpen(c)}><Trophy className="w-4 h-4 mr-1" />Amortizar</Button>
                   <Button size="sm" variant="outline" onClick={() => { setEditing(c); setOpen(true); }}><Edit2 className="w-4 h-4 mr-1" />Editar</Button>
                   <Button size="sm" variant="outline" onClick={() => deletar(c)} className="text-destructive hover:text-destructive"><Trash2 className="w-4 h-4 mr-1" />Excluir</Button>
