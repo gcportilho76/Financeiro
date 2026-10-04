@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import { 
   Wallet, CreditCard, Plus, Edit2, Trash2, ChevronLeft, ChevronRight,
-  TrendingUp, ArrowDownCircle, ArrowUpCircle, PiggyBank
+  TrendingUp, ArrowDownCircle, ArrowUpCircle, PiggyBank, RefreshCw, FileText
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -43,19 +43,24 @@ function DashboardPage() {
 
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando painel financeiro...</div>;
 
-  const totalReceitas = (data?.receitas ?? []).reduce((acc: number, r: any) => acc + Number(r.valor || 0), 0);
-  const totalDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) => acc + Number(d.valor || 0), 0);
-  const saldoMes = totalReceitas - totalDespesas;
+  const receitas = data?.receitas ?? [];
+  const despesas = data?.despesas ?? [];
+  const consignados = data?.consignados ?? [];
+
+  const totalReceitas = receitas.reduce((acc: number, r: any) => acc + Number(r.valor || 0), 0);
+  const totalDespesas = despesas.reduce((acc: number, d: any) => acc + Number(d.valor || 0), 0);
+  const totalConsignados = consignados.reduce((acc: number, c: any) => acc + Number(c.valor || 0), 0);
+  const saldoMes = totalReceitas - totalDespesas - totalConsignados;
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Cabeçalho e Seleção de Mês */}
+      {/* Cabeçalho */}
       <div className="flex justify-between items-center flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Wallet className="w-6 h-6 text-primary" /> Painel Financeiro
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Visão geral das suas finanças e cartões</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Gestão completa do seu orçamento</p>
         </div>
 
         <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-lg border border-border">
@@ -69,60 +74,145 @@ function DashboardPage() {
         </div>
       </div>
 
-      {/* Cards de Resumo */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="p-4 flex items-center gap-4">
-          <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-lg">
-            <ArrowUpCircle className="w-6 h-6" />
+      {/* Cards Principais */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="p-4 flex items-center gap-3">
+          <div className="p-2.5 bg-emerald-500/10 text-emerald-500 rounded-lg">
+            <ArrowUpCircle className="w-5 h-5" />
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Receitas</p>
-            <p className="text-lg font-bold text-emerald-500">{BRL(totalReceitas)}</p>
+            <p className="text-base font-bold text-emerald-500">{BRL(totalReceitas)}</p>
           </div>
         </Card>
 
-        <Card className="p-4 flex items-center gap-4">
-          <div className="p-3 bg-rose-500/10 text-rose-500 rounded-lg">
-            <ArrowDownCircle className="w-6 h-6" />
+        <Card className="p-4 flex items-center gap-3">
+          <div className="p-2.5 bg-rose-500/10 text-rose-500 rounded-lg">
+            <ArrowDownCircle className="w-5 h-5" />
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Despesas</p>
-            <p className="text-lg font-bold text-rose-500">{BRL(totalDespesas)}</p>
+            <p className="text-base font-bold text-rose-500">{BRL(totalDespesas)}</p>
           </div>
         </Card>
 
-        <Card className="p-4 flex items-center gap-4">
-          <div className="p-3 bg-primary/10 text-primary rounded-lg">
-            <PiggyBank className="w-6 h-6" />
+        <Card className="p-4 flex items-center gap-3">
+          <div className="p-2.5 bg-amber-500/10 text-amber-500 rounded-lg">
+            <FileText className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Resultado do Mês</p>
-            <p className={`text-lg font-bold ${saldoMes >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+            <p className="text-xs text-muted-foreground">Consignados</p>
+            <p className="text-base font-bold text-amber-500">{BRL(totalConsignados)}</p>
+          </div>
+        </Card>
+
+        <Card className="p-4 flex items-center gap-3">
+          <div className="p-2.5 bg-primary/10 text-primary rounded-lg">
+            <PiggyBank className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Saldo do Mês</p>
+            <p className={`text-base font-bold ${saldoMes >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
               {BRL(saldoMes)}
             </p>
           </div>
         </Card>
       </div>
 
-      {/* Conteúdo com Abas */}
-      <Tabs defaultValue="cartoes" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="cartoes" className="flex items-center gap-2">
-            <CreditCard className="w-4 h-4" /> Cartões
-          </TabsTrigger>
-          <TabsTrigger value="resumo" className="flex items-center gap-2">
+      {/* Abas do Dashboard */}
+      <Tabs defaultValue="geral" className="space-y-4">
+        <TabsList className="flex flex-wrap gap-1 h-auto p-1">
+          <TabsTrigger value="geral" className="flex items-center gap-1.5">
             <TrendingUp className="w-4 h-4" /> Geral
+          </TabsTrigger>
+          <TabsTrigger value="receitas" className="flex items-center gap-1.5">
+            <ArrowUpCircle className="w-4 h-4 text-emerald-500" /> Receitas ({receitas.length})
+          </TabsTrigger>
+          <TabsTrigger value="despesas" className="flex items-center gap-1.5">
+            <ArrowDownCircle className="w-4 h-4 text-rose-500" /> Despesas ({despesas.length})
+          </TabsTrigger>
+          <TabsTrigger value="consignados" className="flex items-center gap-1.5">
+            <FileText className="w-4 h-4 text-amber-500" /> Consignados ({consignados.length})
+          </TabsTrigger>
+          <TabsTrigger value="cartoes" className="flex items-center gap-1.5">
+            <CreditCard className="w-4 h-4 text-primary" /> Cartões de Crédito
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="cartoes">
-          <CartoesView data={data} comp={competencia} onSaved={refetch} />
+        <TabsContent value="geral">
+          <Card className="p-5 space-y-4">
+            <h3 className="font-semibold text-base">Resumo da Competência {competencia.slice(0, 7)}</h3>
+            <p className="text-sm text-muted-foreground">
+              Utilize as abas acima para gerir detalhadamente as suas Receitas, Despesas, Consignados e Cartões de Crédito.
+            </p>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="resumo">
-          <Card className="p-5 text-center text-sm text-muted-foreground">
-            Lançamentos e extrato de {competencia.slice(0, 7)}
+        <TabsContent value="receitas">
+          <Card className="p-5 space-y-4">
+            <h3 className="font-semibold text-base text-emerald-500">Lançamentos de Receitas</h3>
+            <div className="space-y-2">
+              {receitas.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma receita informada neste mês.</p>
+              ) : (
+                receitas.map((r: any) => (
+                  <div key={r.id} className="flex justify-between p-3 rounded-lg bg-secondary/30 border">
+                    <div>
+                      <p className="font-medium text-sm">{r.descricao || r.categoria || "Receita"}</p>
+                      <p className="text-xs text-muted-foreground">{r.data || competencia}</p>
+                    </div>
+                    <span className="font-bold text-emerald-500">{BRL(Number(r.valor))}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="despesas">
+          <Card className="p-5 space-y-4">
+            <h3 className="font-semibold text-base text-rose-500">Lançamentos de Despesas</h3>
+            <div className="space-y-2">
+              {despesas.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma despesa informada neste mês.</p>
+              ) : (
+                despesas.map((d: any) => (
+                  <div key={d.id} className="flex justify-between p-3 rounded-lg bg-secondary/30 border">
+                    <div>
+                      <p className="font-medium text-sm">{d.descricao || d.categoria || "Despesa"}</p>
+                      <p className="text-xs text-muted-foreground">{d.data || competencia}</p>
+                    </div>
+                    <span className="font-bold text-rose-500">{BRL(Number(d.valor))}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="consignados">
+          <Card className="p-5 space-y-4">
+            <h3 className="font-semibold text-base text-amber-500">Empréstimos / Consignados</h3>
+            <div className="space-y-2">
+              {consignados.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum consignado registrado.</p>
+              ) : (
+                consignados.map((c: any) => (
+                  <div key={c.id} className="flex justify-between p-3 rounded-lg bg-secondary/30 border">
+                    <div>
+                      <p className="font-medium text-sm">{c.descricao || "Consignado"}</p>
+                      <p className="text-xs text-muted-foreground">{c.banco ?? ""}</p>
+                    </div>
+                    <span className="font-bold text-amber-500">{BRL(Number(c.valor))}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="cartoes">
+          <CartoesView data={data} comp={competencia} onSaved={refetch} />
         </TabsContent>
       </Tabs>
     </div>
