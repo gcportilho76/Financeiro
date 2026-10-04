@@ -1423,12 +1423,13 @@ function CartoesView({ data, comp, onSaved }: any) {
   // Agrupar lançamentos por cartão (banco/emissor)
   const grupos = useMemo(() => {
     const m: Record<string, any[]> = {};
-    for (const c of data.cartoes) {
+    for (const c of (data?.cartoes ?? [])) {
       const k = c.cartao || "Geral";
-      (m[k] ??= []).push(c);
+     if (!m[k]) m[k] = [];
+     m[k].push(c);
     }
     return m;
-  }, [data.cartoes]);
+  }, [data?.cartoes]);
 
   const registry = data?.cartoesRegistry ?? data?.cartoesCadastrados?.data ?? data?.cartoesCadastrados ?? [];
 
