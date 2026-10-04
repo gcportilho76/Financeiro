@@ -4,7 +4,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
 } from "recharts";
-import { Wallet, TrendingUp, TriangleAlert as AlertTriangle, Calendar, Printer, Download, Plus, CreditCard as Edit2, Trash2, Copy, ChevronLeft, ChevronRight, LogOut, CreditCard, Receipt, Banknote, Landmark, Trophy, Settings, Target, Package, Bell, ChevronDown, ChevronUp, PiggyBank, ArrowUpFromLine, Sparkles } from "lucide-react";
+import { 
+  Wallet, TrendingUp, TriangleAlert as AlertTriangle, Calendar, Printer, Download, 
+  Plus, CreditCard as Edit2, Trash2, Copy, ChevronLeft, ChevronRight, LogOut, 
+  CreditCard, Receipt, Banknote, Landmark, Trophy, Settings, Target, Package, 
+  Bell, ChevronDown, ChevronUp, PiggyBank, ArrowUpFromLine, Sparkles, Check
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { DatePicker } from "@/components/date-picker";
 import { ComprometidosPanel } from "@/components/comprometidos-panel";
@@ -29,7 +34,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
@@ -204,6 +208,7 @@ function Dashboard() {
           <MiniStat label="Reservas / Caixinhas" value={BRL(reservasGuardadas)} sub={`Patrimônio: ${BRL(calc.patrimonioTotal)}`} color="info" />
         </div>
 
+        {/* Navigation Tabs */}
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="grid grid-cols-3 md:grid-cols-10 w-full max-w-4xl h-auto">
             <TabsTrigger value="resumo">Resumo</TabsTrigger>
@@ -218,8 +223,6 @@ function Dashboard() {
             <TabsTrigger value="importar">Importar</TabsTrigger>
           </TabsList>
 
-
-
           <TabsContent value="resumo" className="mt-4">
             <ResumoView calc={calc} data={data} profile={profile} comp={comp} onSaved={refresh} />
           </TabsContent>
@@ -227,7 +230,6 @@ function Dashboard() {
           <TabsContent value="contas" className="mt-4">
             <ContasPanel userId={data.userId} />
           </TabsContent>
-
 
           <TabsContent value="receitas" className="mt-4">
             <ReceitasView data={data} comp={comp} onSaved={refresh} />
@@ -262,11 +264,475 @@ function Dashboard() {
           </TabsContent>
         </Tabs>
 
-
-        {/* Painel de Conquistas — abaixo do resumo geral, conforme spec */}
+        {/* Painel de Conquistas */}
         <ConquistasPanel eventos={data.eventos} contratos={data.contratos} comp={comp} jurosTotais={jurosTotais} />
       </main>
     </div>
+  );
+}
+
+function DespesasView({ data, comp, onSaved }: any) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+
+  async function alternarStatus(d: any) {
+    const novoStatus = d.status === "PAGO" ? "PENDENTE" : "PAGO";
+    const { error } = await supabase
+      .from("despesas")
+      .update({ status: novoStatus })
+      .eq("id", d.id);
+
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`Status alterado para ${novoStatus}`);
+      onSaved();
+    }
+  }
+
+  async function clonar(d: any) {
+    const { id, created_at, updated_at, ...rest } = d;
+    const next = proxCompetencia(d.competencia);
+    const { error } = await supabase.from("despesas").insert({ ...rest, competencia: next });
+    if (error) toast.error(error.message); 
+    else { toast.success("Despesa clonada para o próximo mês"); onSaved(); }
+  }
+
+  async function deletar(id: string) {
+    if (!confirm("Tem certeza que deseja excluir esta despesa?")) return;
+    const { error } = await supabase.from("despesas").delete().eq("id", id);
+    if (error) toast.error(error.message); 
+    else { toast.success("Despesa excluída"); onSaved(); }
+  }
+
+  return (
+    <Card className="p-5 bg-card border-border">
+      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+        <h3 className="font-semibold flex items-center gap-2">
+          <Receipt className="w-4 h-4 text-warning" /> Despesas do Mês
+        </h3>
+        <Button onClick={() => { setEditing(null); setOpen(true); }}>
+          <Plus className="w-4 h-4 mr-1" /> Nova Despesa
+        </Button>
+      </div>
+
+      {data.despesas.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-6">Nenhuma despesa cadastrada neste mês.</p>
+      )}
+
+      <div className="space-y-2">
+        {data.despesas.map((d: any) => (
+          <div key={d.id} className="flex items-center gap-3 p-3 rounded-md bg-secondary/40 border border-border">
+            {/* Clean list design without Checkbox or CheckCircle2 icon */}
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate flex items-center gap-2">
+                {d.descricao}
+                <Badge variant={d.status === "PAGO" ? "secondary" : "outline"} className="text-[10px] px-1.5 py-0">
+                  {d.categoria}
+                </Badge>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Vencimento: {d.data_venc || "—"}
+              </div>
+            </div>
+
+            <div className="font-bold tabular text-foreground">
+              {BRL(Number(d.valor))}
+            </div>
+
+            <Button
+              size="sm"
+              variant={d.status === "PAGO" ? "secondary" : "outline"}
+              onClick={() => alternarStatus(d)}
+              className="text-xs h-8 px-2.5"
+            >
+              {d.status === "PAGO" ? "Pago" : "Pendente"}
+            </Button>
+
+            <div className="flex gap-1">
+              <Button size="icon" variant="ghost" onClick={() => { setEditing(d); setOpen(true); }}>
+                <Edit2 className="w-4 h-4" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => clonar(d)} title="Clonar p/ próximo mês">
+                <Copy className="w-4 h-4" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => deletar(d.id)}>
+                <Trash2 className="w-4 h-4 text-destructive" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <DespesaForm
+        open={open}
+        onOpenChange={setOpen}
+        comp={comp}
+        editing={editing}
+        onSaved={() => { setOpen(false); onSaved(); }}
+      />
+    </Card>
+  );
+}
+
+function DespesaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
+  const empty = { descricao: "", valor: "", categoria: "Outros", data_venc: "", status: "PENDENTE" };
+  const [form, setForm] = useState<any>(editing ?? empty);
+
+  useEffect(() => {
+    setForm(editing ? { ...editing, valor: String(editing.valor) } : empty);
+  }, [editing, open]);
+
+  async function salvar() {
+    const { data: u } = await supabase.auth.getUser();
+    const payload: any = {
+      descricao: form.descricao,
+      valor: Number(form.valor) || 0,
+      categoria: form.categoria,
+      data_venc: form.data_venc || null,
+      status: form.status,
+      user_id: u.user!.id,
+      competencia: comp,
+    };
+
+    if (editing?.id) {
+      const { error } = await supabase.from("despesas").update(payload).eq("id", editing.id);
+      if (error) return toast.error(error.message);
+    } else {
+      const { error } = await supabase.from("despesas").insert(payload);
+      if (error) return toast.error(error.message);
+    }
+    toast.success("Despesa salva com sucesso!");
+    onSaved();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{editing ? "Editar" : "Nova"} Despesa</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Descrição</Label>
+            <Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} placeholder="Ex: Aluguel" />
+          </div>
+          <div>
+            <Label>Valor (R$)</Label>
+            <Input type="number" step="0.01" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Categoria</Label>
+              <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CATEGORIAS_DESPESA.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PENDENTE">Pendente</SelectItem>
+                  <SelectItem value="PAGO">Pago</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label>Data de Vencimento</Label>
+            <DatePicker value={form.data_venc} onChange={(v) => setForm({ ...form, data_venc: v })} />
+          </div>
+        </div>
+        <DialogFooter className="mt-4">
+          <Button onClick={salvar}>Salvar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReceitasView({ data, comp, onSaved }: any) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+
+  async function alternarStatus(r: any) {
+    const novoStatus = r.status === "RECEBIDO" ? "PREVISTO" : "RECEBIDO";
+    const { error } = await supabase.from("receitas").update({ status: novoStatus }).eq("id", r.id);
+    if (error) toast.error(error.message);
+    else { toast.success(`Status alterado`); onSaved(); }
+  }
+
+  async function clonar(r: any) {
+    const { id, created_at, updated_at, ...rest } = r;
+    const next = proxCompetencia(r.competencia);
+    const { error } = await supabase.from("receitas").insert({ ...rest, competencia: next });
+    if (error) toast.error(error.message); else { toast.success("Clonado"); onSaved(); }
+  }
+
+  async function deletar(id: string) {
+    if (!confirm("Excluir receita?")) return;
+    const { error } = await supabase.from("receitas").delete().eq("id", id);
+    if (error) toast.error(error.message); else { toast.success("Excluído"); onSaved(); }
+  }
+
+  return (
+    <Card className="p-5 bg-card border-border">
+      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+        <h3 className="font-semibold flex items-center gap-2"><Banknote className="w-4 h-4 text-success" /> Receitas do Mês</h3>
+        <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Nova Receita</Button>
+      </div>
+      {data.receitas.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhuma receita cadastrada neste mês.</p>}
+      <div className="space-y-2">
+        {data.receitas.map((r: any) => (
+          <div key={r.id} className="flex items-center gap-3 p-3 rounded-md bg-secondary/40 border border-border">
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate flex items-center gap-2">
+                {r.descricao}
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">{r.categoria}</Badge>
+              </div>
+              <div className="text-xs text-muted-foreground">Data prevista: {r.data_prevista || "—"}</div>
+            </div>
+            <div className="font-bold tabular text-success">{BRL(Number(r.valor))}</div>
+            <Button size="sm" variant={r.status === "RECEBIDO" ? "secondary" : "outline"} onClick={() => alternarStatus(r)}>
+              {r.status === "RECEBIDO" ? "Recebido" : "Previsto"}
+            </Button>
+            <div className="flex gap-1">
+              <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => clonar(r)} title="Clonar p/ próximo mês"><Copy className="w-4 h-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => deletar(r.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <ReceitaForm open={open} onOpenChange={setOpen} comp={comp} editing={editing} onSaved={() => { setOpen(false); onSaved(); }} />
+    </Card>
+  );
+}
+
+function ReceitaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
+  const empty = { descricao: "", valor: "", categoria: "Salário", data_prevista: "", status: "PREVISTO" };
+  const [form, setForm] = useState<any>(editing ?? empty);
+
+  useEffect(() => { setForm(editing ? { ...editing, valor: String(editing.valor) } : empty); }, [editing, open]);
+
+  async function salvar() {
+    const { data: u } = await supabase.auth.getUser();
+    const payload: any = {
+      descricao: form.descricao,
+      valor: Number(form.valor) || 0,
+      categoria: form.categoria,
+      data_prevista: form.data_prevista || null,
+      status: form.status,
+      user_id: u.user!.id,
+      competencia: comp,
+    };
+    if (editing?.id) {
+      const { error } = await supabase.from("receitas").update(payload).eq("id", editing.id);
+      if (error) return toast.error(error.message);
+    } else {
+      const { error } = await supabase.from("receitas").insert(payload);
+      if (error) return toast.error(error.message);
+    }
+    toast.success("Salvo"); onSaved();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{editing ? "Editar" : "Nova"} Receita</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div><Label>Descrição</Label><Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} placeholder="Ex: Salário Mensal" /></div>
+          <div><Label>Valor (R$)</Label><Input type="number" step="0.01" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Categoria</Label>
+              <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{CATEGORIAS_RECEITA.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="PREVISTO">Previsto</SelectItem><SelectItem value="RECEBIDO">Recebido</SelectItem></SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div><Label>Data Prevista</Label><DatePicker value={form.data_prevista} onChange={(v) => setForm({ ...form, data_prevista: v })} /></div>
+        </div>
+        <DialogFooter className="mt-4"><Button onClick={salvar}>Salvar</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CartoesView({ data, comp, onSaved }: any) {
+  return (
+    <Card className="p-5 bg-card border-border">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-semibold flex items-center gap-2"><CreditCard className="w-4 h-4 text-info" /> Faturas de Cartão</h3>
+      </div>
+      <div className="space-y-2">
+        {data.cartoes.map((c: any) => (
+          <div key={c.id} className="flex items-center justify-between p-3 rounded-md bg-secondary/40 border border-border">
+            <div>
+              <div className="font-medium">{c.nome}</div>
+              <div className="text-xs text-muted-foreground">Vencimento: Dia {c.dia_vencimento || "—"}</div>
+            </div>
+            <div className="font-bold tabular">{BRL(Number(c.valor || 0))}</div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function ConsignadosView({ data, comp, onSaved }: any) {
+  return (
+    <Card className="p-5 bg-card border-border">
+      <h3 className="font-semibold flex items-center gap-2 mb-4"><Landmark className="w-4 h-4 text-primary" /> Empréstimos & Consignados</h3>
+      <div className="space-y-3">
+        {data.contratos.map((c: any) => (
+          <div key={c.id} className="p-3 rounded-md bg-secondary/40 border border-border space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="font-semibold">{c.nome}</span>
+              <Badge variant={c.ativo ? "secondary" : "outline"}>{c.ativo ? "Ativo" : "Inativo"}</Badge>
+            </div>
+            <div className="text-xs text-muted-foreground grid grid-cols-2 gap-2">
+              <div>Parcela: {BRL(Number(c.valor_parcela))} ({c.parcela_atual}/{c.total_parcelas})</div>
+              <div>Saldo Devedor: {BRL(Number(c.saldo_devedor))}</div>
+            </div>
+            <Progress value={(c.parcela_atual / c.total_parcelas) * 100} className="h-1.5" />
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function ReservasView({ data, comp, onSaved }: any) {
+  return (
+    <Card className="p-5 bg-card border-border">
+      <h3 className="font-semibold flex items-center gap-2 mb-4"><PiggyBank className="w-4 h-4 text-success" /> Reservas & Caixinhas</h3>
+      <div className="space-y-2">
+        {((data as any).reservas ?? []).map((r: any) => (
+          <div key={r.id} className="flex justify-between items-center p-3 rounded-md bg-secondary/40 border border-border">
+            <span className="font-medium">{r.nome}</span>
+            <span className="font-bold tabular text-success">{BRL(Number(r.valor))}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function InsumosView({ data, comp, onSaved }: any) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+
+  async function clonar(i: any) {
+    const { id, created_at, updated_at, ...rest } = i;
+    const next = proxCompetencia(i.competencia);
+    const { error } = await supabase.from("insumos").insert({ ...rest, competencia: next });
+    if (error) toast.error(error.message); else { toast.success("Clonado"); onSaved(); }
+  }
+
+  async function deletar(id: string) {
+    if (!confirm("Excluir insumo?")) return;
+    const { error } = await supabase.from("insumos").delete().eq("id", id);
+    if (error) toast.error(error.message); else { toast.success("Excluído"); onSaved(); }
+  }
+
+  return (
+    <Card className="p-5 bg-card border-border">
+      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+        <h3 className="font-semibold flex items-center gap-2"><Package className="w-4 h-4 text-info" /> Insumos & Consumo Físico</h3>
+        <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Novo insumo</Button>
+      </div>
+      {data.insumos.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhum insumo cadastrado neste mês.</p>}
+      <div className="space-y-2">
+        {data.insumos.map((i: any) => (
+          <div key={i.id} className="flex items-center gap-3 p-3 rounded-md bg-secondary/40 border border-border">
+            <Package className="w-4 h-4 text-info shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate">{i.nome}</div>
+              <div className="text-xs text-muted-foreground">
+                Fim consumo: {i.data_final_consumo ?? "—"} · Validade: {i.validade ?? "—"}
+              </div>
+            </div>
+            <div className="font-bold tabular text-info">{BRL(Number(i.valor_base))}</div>
+            <div className="flex gap-1">
+              <Button size="icon" variant="ghost" onClick={() => { setEditing(i); setOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => clonar(i)} title="Clonar p/ próximo mês"><Copy className="w-4 h-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => deletar(i.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <InsumoForm open={open} onOpenChange={setOpen} comp={comp} editing={editing} onSaved={() => { setOpen(false); onSaved(); }} />
+    </Card>
+  );
+}
+
+function InsumoForm({ open, onOpenChange, comp, editing, onSaved }: any) {
+  const empty = { nome: "", valor_base: "", data_final_consumo: "", validade: "", observacao: "", dias_alerta: "5" };
+  const [form, setForm] = useState<any>(editing ?? empty);
+
+  useEffect(() => {
+    setForm(editing ? { ...editing, dias_alerta: String(editing.dias_alerta ?? 5) } : empty);
+  }, [editing, open]);
+
+  async function salvar() {
+    const { data: u } = await supabase.auth.getUser();
+    const payload: any = {
+      nome: form.nome,
+      valor_base: Number(form.valor_base) || 0,
+      data_final_consumo: form.data_final_consumo || null,
+      validade: form.validade || null,
+      observacao: form.observacao || null,
+      dias_alerta: Math.max(0, Number(form.dias_alerta) || 0),
+      user_id: u.user!.id,
+      competencia: comp,
+    };
+    if (editing?.id) {
+      const { error } = await supabase.from("insumos").update(payload).eq("id", editing.id);
+      if (error) return toast.error(error.message);
+    } else {
+      const { error } = await supabase.from("insumos").insert(payload);
+      if (error) return toast.error(error.message);
+    }
+    toast.success("Salvo"); onSaved();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} Insumo</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div><Label>Nome do Insumo</Label><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Ração premium 15kg" /></div>
+          <div><Label>Valor Base (R$)</Label><Input type="number" step="0.01" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Data Fim do Consumo</Label>
+              <p className="text-[10px] text-muted-foreground mb-1">Previsão de quando o produto vai acabar (uso diário).</p>
+              <DatePicker value={form.data_final_consumo} onChange={(v) => setForm({ ...form, data_final_consumo: v })} />
+            </div>
+            <div>
+              <Label>Data de Validade</Label>
+              <p className="text-[10px] text-muted-foreground mb-1">Vencimento do produto definido pelo fabricante.</p>
+              <DatePicker value={form.validade} onChange={(v) => setForm({ ...form, validade: v })} />
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="mt-4"><Button onClick={salvar}>Salvar</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -279,6 +745,7 @@ function ConquistasPanel({ eventos, contratos, comp, jurosTotais }: any) {
     .reduce((s: number, c: any) => s + Number(c.valor_parcela ?? 0), 0);
   const saldoDevedor = (contratos ?? [])
     .reduce((s: number, c: any) => s + Number(c.saldo_devedor ?? 0), 0);
+
   return (
     <Card className="p-6 bg-card border-border">
       <h2 className="text-sm font-semibold text-muted-foreground mb-3">🏆 PAINEL DE CONQUISTAS — JUROS DESTRUÍDOS</h2>
@@ -306,8 +773,6 @@ function ConquistasPanel({ eventos, contratos, comp, jurosTotais }: any) {
     </Card>
   );
 }
-
-/* ───────────── COMPONENTES ───────────── */
 
 function KpiCard({ label, value, hint, icon, accent, danger, positive }: any) {
   return (
@@ -340,26 +805,14 @@ function MiniStat({ label, value, sub, color }: any) {
   );
 }
 
-// Paleta de cores estritamente diferentes (sem verde — reservado p/ Sobra Líquida)
 const PALETA_CATEGORIAS = [
-  "#3b82f6", // azul
-  "#f97316", // laranja
-  "#a855f7", // roxo
-  "#eab308", // amarelo
-  "#06b6d4", // ciano
-  "#ef4444", // vermelho
-  "#ec4899", // rosa/pink
-  "#0ea5e9", // azul claro
-  "#d946ef", // fúcsia
-  "#f59e0b", // âmbar
-  "#6366f1", // indigo
-  "#dc2626", // vermelho escuro
+  "#3b82f6", "#f97316", "#a855f7", "#eab308", "#06b6d4",
+  "#ef4444", "#ec4899", "#0ea5e9", "#d946ef", "#f59e0b", "#6366f1", "#dc2626",
 ];
-const COR_SOBRA = "#22c55e"; // verde reservado
+const COR_SOBRA = "#22c55e";
 
 function corDaFatia(nome: string, idx: number) {
   if (nome === "Sobra Líquida") return COR_SOBRA;
-  // determinístico por nome → mesma categoria sempre mesma cor
   let hash = 0;
   for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) >>> 0;
   return PALETA_CATEGORIAS[(hash + idx) % PALETA_CATEGORIAS.length];
@@ -376,7 +829,6 @@ function PizzaReceita({ receitas, despesas, cartoes, resultado }: any) {
   if (resultado > 0) fatias.push({ name: "Sobra Líquida", value: resultado });
   if (fatias.length === 0) fatias.push({ name: "Sem dados", value: 1 });
 
-  // Garante cores distintas entre fatias adjacentes
   const usadas = new Set<string>();
   const coresFinais = fatias.map((f, i) => {
     let c = corDaFatia(f.name, i);
@@ -428,9 +880,8 @@ function ResumoView({ calc, data, profile, comp, onSaved }: any) {
   const [saldo, setSaldo] = useState(String(saldoMes));
   const [reserva, setReserva] = useState(String(profile.reserva_minima ?? 0));
   const [salarioBase, setSalarioBase] = useState(String(profile.salario_base ?? 11000));
-  const [aberto, setAberto] = useState(false); // colapsado por padrão
+  const [aberto, setAberto] = useState(false);
 
-  // Re-sincroniza quando o mês muda
   useEffect(() => {
     setSaldo(String(Number(data.saldoInicialMes ?? 0)));
     setReserva(String(profile.reserva_minima ?? 0));
@@ -440,14 +891,12 @@ function ResumoView({ calc, data, profile, comp, onSaved }: any) {
   async function salvar() {
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) return;
-    // Reserva mínima continua no profile (global do usuário)
     const { error: e1 } = await supabase.from("profiles").upsert({
       id: u.user.id,
       reserva_minima: Number(reserva),
       salario_base: Number(salarioBase) || 0,
       updated_at: new Date().toISOString(),
     } as any);
-    // Saldo Inicial é vinculado ao mês selecionado
     const { error: e2 } = await (supabase.from as any)("saldos_mensais").upsert({
       user_id: u.user.id,
       competencia: comp,
@@ -460,7 +909,6 @@ function ResumoView({ calc, data, profile, comp, onSaved }: any) {
 
   return (
     <div className="space-y-4">
-      {/* Quadro 2 — Resumo Geral (principal, expandido) */}
       <Card className="p-6 bg-card border-border">
         <h3 className="font-semibold mb-4 text-lg">Resumo Geral de Contas — {`${data.receitas.length + data.despesas.length + data.cartoes.length} lançamentos`}</h3>
         <div className="grid md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
@@ -489,7 +937,6 @@ function ResumoView({ calc, data, profile, comp, onSaved }: any) {
         </div>
       </Card>
 
-      {/* Quadro 1 — Configurações (linha retrátil abaixo) */}
       <Card className="bg-card border-border">
         <button
           onClick={() => setAberto((v) => !v)}
@@ -532,8 +979,19 @@ function ResumoView({ calc, data, profile, comp, onSaved }: any) {
   );
 }
 
+function Row({ k, v, bold, color }: any) {
+  const colorMap: any = {
+    success: "text-success", warning: "text-warning", info: "text-info",
+    destructive: "text-destructive", muted: "text-muted-foreground",
+  };
+  return (
+    <div className="flex justify-between items-center">
+      <span className={bold ? "font-semibold" : "text-muted-foreground"}>{k}</span>
+      <span className={`tabular ${bold ? "font-bold text-base" : "font-medium"} ${colorMap[color] ?? "text-foreground"}`}>{v}</span>
+    </div>
+  );
+}
 
-/* ───── ALERTAS ───── */
 function AlertsBar({ despesas, insumos }: any) {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
 
@@ -543,14 +1001,12 @@ function AlertsBar({ despesas, insumos }: any) {
     return Math.round((d.getTime() - hoje.getTime()) / 86400000);
   };
 
-  // despesas pendentes: janela fixa 5 dias
   const despVencendo = (despesas ?? []).filter((d: any) => {
     if (d.status !== "PENDENTE" || d.tipo === "consignado") return false;
     const dd = diffDias(d.data_venc);
     return dd >= 0 && dd <= 5;
   });
 
-  // insumos: usa dias_alerta configurado por item
   const insVencendo = (insumos ?? []).flatMap((i: any) => {
     const margem = Number(i.dias_alerta ?? 5);
     const alertas: any[] = [];
@@ -586,1578 +1042,5 @@ function AlertsBar({ despesas, insumos }: any) {
         ))}
       </div>
     </div>
-  );
-}
-
-/* ───── INSUMOS ───── */
-function InsumosView({ data, comp, onSaved }: any) {
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-
-  async function clonar(i: any) {
-    const { id, created_at, updated_at, ...rest } = i;
-    const next = proxCompetencia(i.competencia);
-    const { error } = await (supabase.from as any)("insumos").insert({ ...rest, competencia: next });
-    if (error) toast.error(error.message); else { toast.success("Clonado"); onSaved(); }
-  }
-  async function deletar(id: string) {
-    if (!confirm("Excluir insumo?")) return;
-    const { error } = await (supabase.from as any)("insumos").delete().eq("id", id);
-    if (error) toast.error(error.message); else { toast.success("Excluído"); onSaved(); }
-  }
-
-  return (
-    <Card className="p-5 bg-card border-border">
-      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-        <h3 className="font-semibold flex items-center gap-2"><Package className="w-4 h-4 text-info" /> Insumos & Consumo Físico</h3>
-        <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Novo insumo</Button>
-      </div>
-      {data.insumos.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhum insumo cadastrado neste mês.</p>}
-      <div className="space-y-2">
-        {data.insumos.map((i: any) => (
-          <div key={i.id} className="flex items-center gap-3 p-3 rounded-md bg-secondary/40 border border-border">
-            <Package className="w-4 h-4 text-info shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">{i.nome}</div>
-              <div className="text-xs text-muted-foreground">
-                Fim consumo: {i.data_final_consumo ?? "—"} · Validade: {i.validade ?? "—"}
-              </div>
-            </div>
-            <div className="font-bold tabular text-info">{BRL(Number(i.valor_base))}</div>
-            <div className="flex gap-1">
-              <Button size="icon" variant="ghost" onClick={() => { setEditing(i); setOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => clonar(i)} title="Clonar p/ próximo mês"><Copy className="w-4 h-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => deletar(i.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-            </div>
-          </div>
-        ))}
-      </div>
-      <InsumoForm open={open} onOpenChange={setOpen} comp={comp} editing={editing} onSaved={() => { setOpen(false); onSaved(); }} />
-    </Card>
-  );
-}
-
-function InsumoForm({ open, onOpenChange, comp, editing, onSaved }: any) {
-  const empty = { nome: "", valor_base: "", data_final_consumo: "", validade: "", observacao: "", dias_alerta: "5" };
-  const [form, setForm] = useState<any>(editing ?? empty);
-  useEffect(() => {
-    setForm(editing ? { ...editing, dias_alerta: String(editing.dias_alerta ?? 5) } : empty);
-  }, [editing, open]); // eslint-disable-line
-
-  async function salvar() {
-    const { data: u } = await supabase.auth.getUser();
-    const payload: any = {
-      nome: form.nome,
-      valor_base: Number(form.valor_base) || 0,
-      data_final_consumo: form.data_final_consumo || null,
-      validade: form.validade || null,
-      observacao: form.observacao || null,
-      dias_alerta: Math.max(0, Number(form.dias_alerta) || 0),
-      user_id: u.user!.id,
-      competencia: comp,
-    };
-    if (editing?.id) {
-      const { error } = await (supabase.from as any)("insumos").update(payload).eq("id", editing.id);
-      if (error) return toast.error(error.message);
-    } else {
-      const { error } = await (supabase.from as any)("insumos").insert(payload);
-      if (error) return toast.error(error.message);
-    }
-    toast.success("Salvo"); onSaved();
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} Insumo</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div><Label>Nome do Insumo</Label><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Ração premium 15kg" /></div>
-          <div><Label>Valor Base (R$)</Label><Input type="number" step="0.01" value={form.valor_base} onChange={(e) => setForm({ ...form, valor_base: e.target.value })} /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Data Fim do Consumo</Label>
-              <p className="text-[10px] text-muted-foreground mb-1">Previsão de quando o produto vai acabar (uso diário).</p>
-              <DatePicker value={form.data_final_consumo} onChange={(v) => setForm({ ...form, data_final_consumo: v })} />
-            </div>
-            <div>
-              <Label>Data de Validade</Label>
-              <p className="text-[10px] text-muted-foreground mb-1">Vencimento do produto definido pelo fabricante.</p>
-              <DatePicker value={form.validade} onChange={(v) => setForm({ ...form, validade: v })} />
-            </div>
-          </div>
-          <div>
-            <Label>Alertar quantos dias antes de acabar/vencer</Label>
-            <Input type="number" min="0" value={form.dias_alerta} onChange={(e) => setForm({ ...form, dias_alerta: e.target.value })} placeholder="5" />
-          </div>
-          <div><Label>Observação</Label><Input value={form.observacao ?? ""} onChange={(e) => setForm({ ...form, observacao: e.target.value })} /></div>
-        </div>
-        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function Row({ k, v, color, bold }: any) {
-  const cmap: any = { success: "text-success", destructive: "text-destructive", warning: "text-warning", info: "text-info", muted: "text-muted-foreground" };
-  return (
-    <div className="flex justify-between">
-      <span className="text-muted-foreground">{k}</span>
-      <span className={`tabular ${bold ? "font-bold" : ""} ${cmap[color] ?? ""}`}>{v}</span>
-    </div>
-  );
-}
-
-/* ───── RECEITAS ───── */
-function ReceitasView({ data, comp, onSaved }: any) {
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-  const [sel, setSel] = useState<Record<string, boolean>>({});
-  const allIds = data.receitas.map((r: any) => r.id);
-  const allSelected = allIds.length > 0 && allIds.every((id: string) => sel[id]);
-  const selectedIds = allIds.filter((id: string) => sel[id]);
-
-  async function clonar(r: any) {
-    const { id, created_at, ...rest } = r;
-    const next = proxCompetencia(r.competencia);
-    const { error } = await supabase.from("receitas").insert({ ...rest, competencia: next, data: next });
-    if (error) toast.error(error.message); else { toast.success("Clonado para " + formatCompetencia(next)); onSaved(); }
-  }
-  async function deletar(id: string) {
-    if (!confirm("Excluir este lançamento?")) return;
-    const { error } = await supabase.from("receitas").delete().eq("id", id);
-    if (error) toast.error(error.message); else { toast.success("Excluído"); onSaved(); }
-  }
-  async function excluirSelecionados() {
-    if (selectedIds.length === 0) return toast.error("Selecione ao menos um lançamento");
-    if (!confirm(`Excluir ${selectedIds.length} lançamento(s) de receita deste mês?`)) return;
-    const { error } = await supabase.from("receitas").delete().in("id", selectedIds);
-    if (error) toast.error(error.message); else { toast.success(`${selectedIds.length} excluído(s)`); setSel({}); onSaved(); }
-  }
-  async function excluirMesCompetencia() {
-    if (!confirm(`Apagar TODAS as receitas de ${formatCompetencia(comp)}? Esta ação não pode ser desfeita.`)) return;
-    const { error } = await supabase.from("receitas").delete().eq("competencia", comp);
-    if (error) toast.error(error.message); else { toast.success("Receitas do mês excluídas"); setSel({}); onSaved(); }
-  }
-
-  return (
-    <Card className="p-5 bg-card border-border">
-      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-        <h3 className="font-semibold flex items-center gap-2"><Banknote className="w-4 h-4 text-success" /> Receitas</h3>
-        <div className="flex gap-2 flex-wrap">
-          {data.receitas.length > 0 && (
-            <>
-              <Button variant="outline" size="sm" onClick={() => setSel(allSelected ? {} : Object.fromEntries(allIds.map((id: string) => [id, true])))}>
-                {allSelected ? "Desmarcar tudo" : "Selecionar tudo"}
-              </Button>
-              {selectedIds.length > 0 && (
-                <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirSelecionados}>
-                  <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir selecionados ({selectedIds.length})
-                </Button>
-              )}
-              <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirMesCompetencia}>
-                <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir todas do mês
-              </Button>
-            </>
-          )}
-          <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Nova receita</Button>
-        </div>
-      </div>
-      {data.receitas.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhuma receita neste mês.</p>}
-      <div className="space-y-2">
-        {data.receitas.map((r: any) => (
-          <div key={r.id} className={`flex items-center gap-3 p-3 rounded-md border ${sel[r.id] ? "bg-destructive/5 border-destructive/30" : "bg-secondary/40 border-border"}`}>
-            <Checkbox checked={!!sel[r.id]} onCheckedChange={(v) => setSel({ ...sel, [r.id]: !!v })} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-medium truncate">{r.descricao}</span>
-                <Badge variant={r.status === "RECEBIDO" ? "default" : "outline"}
-                  className={r.status === "RECEBIDO" ? "bg-success/20 text-success border-success/30" : "border-warning/40 text-warning"}>
-                  {r.status}
-                </Badge>
-              </div>
-              <div className="text-xs text-muted-foreground">{r.categoria} · {r.data}</div>
-            </div>
-            <div className="font-bold tabular text-success">{BRL(Number(r.valor))}</div>
-            <div className="flex gap-1">
-              <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => clonar(r)} title="Clonar p/ próximo mês"><Copy className="w-4 h-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => deletar(r.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-            </div>
-          </div>
-        ))}
-      </div>
-      <ReceitaForm open={open} onOpenChange={setOpen} comp={comp} editing={editing} onSaved={() => { setOpen(false); onSaved(); }} />
-    </Card>
-  );
-}
-
-function ReceitaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
-  const [form, setForm] = useState<any>(() => editing ?? { descricao: "", valor: "", data: hojeISO(), categoria: "Salário", status: "PREVISTO" });
-  useEffect(() => { setForm(editing ?? { descricao: "", valor: "", data: hojeISO(), categoria: "Salário", status: "PREVISTO" }); }, [editing, open]);
-  async function salvar() {
-    const { data: u } = await supabase.auth.getUser();
-    const payload = { ...form, valor: Number(form.valor), user_id: u.user!.id, competencia: comp };
-    delete (payload as any).created_at;
-    if (editing?.id) {
-      const { error } = await supabase.from("receitas").update(payload).eq("id", editing.id);
-      if (error) return toast.error(error.message);
-    } else {
-      const { error } = await supabase.from("receitas").insert(payload);
-      if (error) return toast.error(error.message);
-    }
-    toast.success("Salvo"); onSaved();
-  }
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{editing ? "Editar" : "Nova"} Receita</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div><Label>Descrição</Label><Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>Valor</Label><Input type="number" step="0.01" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} /></div>
-            <div><Label>Data</Label><DatePicker value={form.data} onChange={(v) => setForm({ ...form, data: v })} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Categoria</Label>
-              <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{CATEGORIAS_RECEITA.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PREVISTO">PREVISTO (planejado)</SelectItem>
-                  <SelectItem value="RECEBIDO">RECEBIDO (em conta)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ───── DESPESAS ───── */
-function DespesasView({ data, comp, onSaved }: any) {
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-  const [importOpen, setImportOpen] = useState(false);
-  const [sel, setSel] = useState<Record<string, boolean>>({});
-  const allIds = data.despesas.map((d: any) => d.id);
-  const allSelected = allIds.length > 0 && allIds.every((id: string) => sel[id]);
-  const selectedIds = allIds.filter((id: string) => sel[id]);
-
-  async function clonar(d: any) {
-    const { id, created_at, ...rest } = d;
-    const next = proxCompetencia(d.competencia);
-    const { error } = await supabase.from("despesas").insert({ ...rest, competencia: next, data_venc: next, status: "PENDENTE" });
-    if (error) toast.error(error.message); else { toast.success("Clonado"); onSaved(); }
-  }
-  async function deletar(id: string) {
-    if (!confirm("Excluir?")) return;
-    const despesa = data.despesas.find((x: any) => x.id === id);
-    if (despesa?.tipo === "amortizacao") {
-      const { data: evs } = await (supabase.from as any)("consignados_eventos").select("*").eq("despesa_id", id);
-      for (const ev of evs ?? []) {
-        const { data: c } = await supabase.from("consignados_contratos").select("*").eq("id", ev.contrato_id).maybeSingle();
-        if (c) {
-          await supabase.from("consignados_contratos").update({
-            total_parcelas: Number(c.total_parcelas) + Number(ev.parcelas_abatidas ?? 0),
-            saldo_devedor: Number(c.saldo_devedor) + Number(ev.reducao_bruta ?? 0),
-          }).eq("id", c.id);
-        }
-        await supabase.from("consignados_eventos").delete().eq("id", ev.id);
-      }
-      if ((evs ?? []).length) toast.success("Amortização revertida no Painel de Conquistas");
-    }
-    const { error } = await supabase.from("despesas").delete().eq("id", id);
-    if (error) toast.error(error.message); else { toast.success("Excluído"); onSaved(); }
-  }
-  async function excluirSelecionados() {
-    if (selectedIds.length === 0) return toast.error("Selecione ao menos um lançamento");
-    if (!confirm(`Excluir ${selectedIds.length} lançamento(s) de despesa deste mês?`)) return;
-    for (const id of selectedIds) {
-      const despesa = data.despesas.find((x: any) => x.id === id);
-      if (despesa?.tipo === "amortizacao") {
-        const { data: evs } = await (supabase.from as any)("consignados_eventos").select("*").eq("despesa_id", id);
-        for (const ev of evs ?? []) {
-          const { data: c } = await supabase.from("consignados_contratos").select("*").eq("id", ev.contrato_id).maybeSingle();
-          if (c) {
-            await supabase.from("consignados_contratos").update({
-              total_parcelas: Number(c.total_parcelas) + Number(ev.parcelas_abatidas ?? 0),
-              saldo_devedor: Number(c.saldo_devedor) + Number(ev.reducao_bruta ?? 0),
-            }).eq("id", c.id);
-          }
-          await supabase.from("consignados_eventos").delete().eq("id", ev.id);
-        }
-      }
-    }
-    const { error } = await supabase.from("despesas").delete().in("id", selectedIds);
-    if (error) toast.error(error.message); else { toast.success(`${selectedIds.length} excluído(s)`); setSel({}); onSaved(); }
-  }
-  async function excluirMesCompetencia() {
-    if (!confirm(`Apagar TODAS as despesas de ${formatCompetencia(comp)}? Esta ação não pode ser desfeita.`)) return;
-    const amortizacoes = data.despesas.filter((d: any) => d.tipo === "amortizacao");
-    for (const d of amortizacoes) {
-      const { data: evs } = await (supabase.from as any)("consignados_eventos").select("*").eq("despesa_id", d.id);
-      for (const ev of evs ?? []) {
-        const { data: c } = await supabase.from("consignados_contratos").select("*").eq("id", ev.contrato_id).maybeSingle();
-        if (c) {
-          await supabase.from("consignados_contratos").update({
-            total_parcelas: Number(c.total_parcelas) + Number(ev.parcelas_abatidas ?? 0),
-            saldo_devedor: Number(c.saldo_devedor) + Number(ev.reducao_bruta ?? 0),
-          }).eq("id", c.id);
-        }
-        await supabase.from("consignados_eventos").delete().eq("id", ev.id);
-      }
-    }
-    const { error } = await supabase.from("despesas").delete().eq("competencia", comp);
-    if (error) toast.error(error.message); else { toast.success("Despesas do mês excluídas"); setSel({}); onSaved(); }
-  }
-  async function togglePago(d: any) {
-    const novo = d.status === "PAGO" ? "PENDENTE" : "PAGO";
-    await supabase.from("despesas").update({ status: novo }).eq("id", d.id);
-    onSaved();
-  }
-
-  const visiveis = [...data.despesas].sort((a: any, b: any) => {
-    const sa = a.status === "PENDENTE" ? 0 : 1;
-    const sb = b.status === "PENDENTE" ? 0 : 1;
-    if (sa !== sb) return sa - sb;
-    const ta = new Date(a.created_at ?? 0).getTime();
-    const tb = new Date(b.created_at ?? 0).getTime();
-    return tb - ta;
-  });
-
-  return (
-    <Card className="p-5 bg-card border-border">
-      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-        <h3 className="font-semibold flex items-center gap-2"><Receipt className="w-4 h-4 text-warning" /> Despesas</h3>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={() => setImportOpen(true)}><Download className="w-4 h-4 mr-1" />Importar Fixas</Button>
-          {visiveis.length > 0 && (
-            <>
-              <Button variant="outline" size="sm" onClick={() => setSel(allSelected ? {} : Object.fromEntries(allIds.map((id: string) => [id, true])))}>
-                {allSelected ? "Desmarcar tudo" : "Selecionar tudo"}
-              </Button>
-              {selectedIds.length > 0 && (
-                <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirSelecionados}>
-                  <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir selecionados ({selectedIds.length})
-                </Button>
-              )}
-              <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirMesCompetencia}>
-                <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir todas do mês
-              </Button>
-            </>
-          )}
-          <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Nova despesa</Button>
-        </div>
-      </div>
-      {visiveis.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhuma despesa neste mês.</p>}
-      <div className="space-y-2">
-        {visiveis.map((d: any) => (
-          <div key={d.id} className={`flex items-center gap-3 p-3 rounded-md border ${sel[d.id] ? "bg-destructive/5 border-destructive/30" : "bg-secondary/40 border-border"}`}>
-            <Checkbox checked={!!sel[d.id]} onCheckedChange={(v) => setSel({ ...sel, [d.id]: !!v })} />
-            <Checkbox checked={d.status === "PAGO"} onCheckedChange={() => togglePago(d)} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium truncate">{d.descricao}</span>
-                <Badge variant="outline" className={
-                  d.status === "PAGO" ? "bg-success/15 text-success border-success/30" : "bg-warning/15 text-warning border-warning/30"
-                }>{d.status}</Badge>
-                <Badge variant="outline" className="text-xs">{d.tipo}</Badge>
-                {d.recorrente && <Badge variant="outline" className="text-xs border-info/40 text-info">↻ recorrente</Badge>}
-              </div>
-              <div className="text-xs text-muted-foreground">{d.categoria} · vence {d.data_venc}</div>
-            </div>
-            <div className="font-bold tabular text-warning">{BRL(Number(d.valor))}</div>
-            <div className="flex gap-1">
-              <Button size="icon" variant="ghost" onClick={() => { setEditing(d); setOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => clonar(d)} title="Clonar p/ próximo mês"><Copy className="w-4 h-4" /></Button>
-              <Button size="icon" variant="ghost" onClick={() => deletar(d.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-            </div>
-          </div>
-        ))}
-      </div>
-      <DespesaForm open={open} onOpenChange={setOpen} comp={comp} editing={editing} onSaved={() => { setOpen(false); onSaved(); }} />
-      <ImportarFixasDialog open={importOpen} onOpenChange={setImportOpen} comp={comp} onSaved={() => { setImportOpen(false); onSaved(); }} />
-    </Card>
-  );
-}
-
-function DespesaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
-  const empty = { descricao: "", valor: "", data_venc: hojeISO(), categoria: "Outros", status: "PENDENTE", tipo: "variavel", recorrente: false };
-  const [form, setForm] = useState<any>(editing ?? empty);
-  useEffect(() => { setForm(editing ?? empty); }, [editing, open]); // eslint-disable-line
-
-  async function salvar() {
-    const { data: u } = await supabase.auth.getUser();
-    const payload = { ...form, valor: Number(form.valor), user_id: u.user!.id, competencia: comp };
-    delete (payload as any).created_at;
-    if (editing?.id) {
-      const { error } = await supabase.from("despesas").update(payload).eq("id", editing.id);
-      if (error) return toast.error(error.message);
-    } else {
-      const { error } = await supabase.from("despesas").insert(payload);
-      if (error) return toast.error(error.message);
-      // Replicação recorrente "Choose to clone": cria também no próximo mês se for fixa+recorrente
-      if (form.tipo === "fixa" && form.recorrente) {
-        const next = proxCompetencia(comp);
-        await supabase.from("despesas").insert({ ...payload, competencia: next, data_venc: next, status: "PENDENTE" });
-      }
-    }
-    toast.success("Salvo"); onSaved();
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{editing ? "Editar" : "Nova"} Despesa</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div><Label>Descrição</Label><Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>Valor</Label><Input type="number" step="0.01" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} /></div>
-            <div><Label>Vencimento</Label><DatePicker value={form.data_venc} onChange={(v) => setForm({ ...form, data_venc: v })} /></div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label>Categoria</Label>
-              <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{CATEGORIAS_DESPESA.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Tipo</Label>
-              <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="variavel">Variável</SelectItem>
-                  <SelectItem value="fixa">Fixa</SelectItem>
-                  <SelectItem value="amortizacao">Amortização</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PENDENTE">PENDENTE</SelectItem>
-                  <SelectItem value="PAGO">PAGO</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          {form.tipo === "fixa" && (
-            <label className="flex items-center gap-2 text-sm pt-2 border-t border-border">
-              <Checkbox checked={form.recorrente} onCheckedChange={(v) => setForm({ ...form, recorrente: !!v })} />
-              <span>Replicar para o próximo mês de forma recorrente</span>
-            </label>
-          )}
-        </div>
-        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ImportarFixasDialog({ open, onOpenChange, comp, onSaved }: any) {
-  const [fixas, setFixas] = useState<any[]>([]);
-  const [sel, setSel] = useState<Record<string, boolean>>({});
-  useEffect(() => {
-    if (!open) return;
-    (async () => {
-      // mês anterior
-      const [y, m] = comp.split("-").map(Number);
-      const d = new Date(y, m - 2, 1);
-      const prev = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-      const { data: rows } = await supabase.from("despesas").select("*").eq("competencia", prev).eq("tipo", "fixa");
-      setFixas(rows ?? []);
-      const ini: Record<string, boolean> = {};
-      (rows ?? []).forEach((r: any) => (ini[r.id] = true));
-      setSel(ini);
-    })();
-  }, [open, comp]);
-
-  async function importar() {
-    const { data: u } = await supabase.auth.getUser();
-    const escolhidas = fixas.filter((f) => sel[f.id]);
-    if (escolhidas.length === 0) return toast.error("Selecione ao menos uma");
-    const rows = escolhidas.map((f) => {
-      const { id, created_at, ...rest } = f;
-      return { ...rest, user_id: u.user!.id, competencia: comp, data_venc: comp, status: "PENDENTE" };
-    });
-    const { error } = await supabase.from("despesas").insert(rows);
-    if (error) toast.error(error.message); else { toast.success(`${rows.length} importadas`); onSaved(); }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Importar Fixas do Mês Anterior</DialogTitle></DialogHeader>
-        <div className="max-h-[400px] overflow-auto space-y-2">
-          {fixas.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhuma despesa fixa no mês anterior.</p>}
-          {fixas.map((f) => (
-            <label key={f.id} className="flex items-center gap-3 p-2 rounded bg-secondary/40 cursor-pointer">
-              <Checkbox checked={!!sel[f.id]} onCheckedChange={(v) => setSel({ ...sel, [f.id]: !!v })} />
-              <div className="flex-1">
-                <div className="text-sm font-medium">{f.descricao}</div>
-                <div className="text-xs text-muted-foreground">{f.categoria}</div>
-              </div>
-              <div className="tabular text-warning">{BRL(Number(f.valor))}</div>
-            </label>
-          ))}
-        </div>
-        <DialogFooter><Button onClick={importar}>Importar selecionadas</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ───── CARTÕES ───── */
-function CartoesView({ data, comp, onSaved }: any) {
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-  const [regOpen, setRegOpen] = useState(false);
-  const [sel, setSel] = useState<Record<string, boolean>>({});
-  const allCardIds = data.cartoes.map((c: any) => c.id);
-  const allCardSelected = allCardIds.length > 0 && allCardIds.every((id: string) => sel[id]);
-  const selectedCardIds = allCardIds.filter((id: string) => sel[id]);
-
-  async function clonar(c: any) {
-    const { id, created_at, ...rest } = c;
-    const next = proxCompetencia(c.competencia);
-    const { error } = await supabase.from("cartoes_lancamentos").insert({ ...rest, competencia: next, status: "PENDENTE" });
-    if (error) toast.error(error.message); else { toast.success("Clonado"); onSaved(); }
-  }
-  async function deletar(id: string) {
-    if (!confirm("Excluir?")) return;
-    await supabase.from("cartoes_lancamentos").delete().eq("id", id);
-    onSaved();
-  }
-  async function excluirSelecionados() {
-    if (selectedCardIds.length === 0) return toast.error("Selecione ao menos um lançamento");
-    if (!confirm(`Excluir ${selectedCardIds.length} lançamento(s) de cartão deste mês?`)) return;
-    const { error } = await supabase.from("cartoes_lancamentos").delete().in("id", selectedCardIds);
-    if (error) toast.error(error.message); else { toast.success(`${selectedCardIds.length} excluído(s)`); setSel({}); onSaved(); }
-  }
-  async function excluirMesCompetencia() {
-    if (!confirm(`Apagar TODOS os lançamentos de cartão de ${formatCompetencia(comp)}? Esta ação não pode ser desfeita.`)) return;
-    const { error } = await supabase.from("cartoes_lancamentos").delete().eq("competencia", comp);
-    if (error) toast.error(error.message); else { toast.success("Lançamentos do mês excluídos"); setSel({}); onSaved(); }
-  }
-  async function toggleAtivo(c: any) {
-    await supabase.from("cartoes_lancamentos").update({ ativo: !c.ativo }).eq("id", c.id);
-    toast.success(c.ativo ? "Desativado (fora da soma)" : "Reativado");
-    onSaved();
-  }
-  async function toggleFatura(c: any) {
-    const novo = c.fatura === "seguinte" ? "atual" : "seguinte";
-    await (supabase.from as any)("cartoes_lancamentos").update({ fatura: novo }).eq("id", c.id);
-    onSaved();
-  }
-  async function pagarFatura(itens: any[]) {
-    const alvos = (itens as any[]).filter((c) => c.ativo && c.status === "PENDENTE");
-    if (alvos.length === 0) return;
-    const total = alvos.reduce((s, c) => s + Number(c.valor), 0);
-    if (!confirm(`Pagar fatura no valor de ${BRL(total)} (${alvos.length} lançamento(s))?\n\nEsse valor será deduzido do Saldo Atual.`)) return;
-    const { error } = await supabase.from("cartoes_lancamentos").update({ status: "PAGO" }).in("id", alvos.map((c) => c.id));
-    if (error) toast.error(error.message); else { toast.success(`Fatura paga: ${BRL(total)}`); onSaved(); }
-  }
-  async function estornarFatura(itens: any[]) {
-    const alvos = (itens as any[]).filter((c) => c.ativo && c.status === "PAGO");
-    if (alvos.length === 0) return;
-    const total = alvos.reduce((s, c) => s + Number(c.valor), 0);
-    if (!confirm(`Estornar fatura de ${BRL(total)}? O valor volta ao Saldo Atual como pendente.`)) return;
-    const { error } = await supabase.from("cartoes_lancamentos").update({ status: "PENDENTE" }).in("id", alvos.map((c) => c.id));
-    if (error) toast.error(error.message); else { toast.success(`Fatura estornada: ${BRL(total)}`); onSaved(); }
-  }
-  async function togglePagoItem(c: any) {
-    const novo = c.status === "PAGO" ? "PENDENTE" : "PAGO";
-    const { error } = await supabase.from("cartoes_lancamentos").update({ status: novo }).eq("id", c.id);
-    if (error) toast.error(error.message); else onSaved();
-  }
-  async function desativarMae(c: any) {
-    if (!confirm(`Desativar/Excluir o Lançamento Mãe "${c.descricao}"?\n\nEscolha OK para EXCLUIR de vez, ou Cancelar para apenas DESATIVAR (sai da soma).`)) {
-      await supabase.from("cartoes_lancamentos").update({ ativo: false }).eq("id", c.id);
-      toast.success("Lançamento Mãe desativado");
-    } else {
-      await supabase.from("cartoes_lancamentos").delete().eq("id", c.id);
-      toast.success("Lançamento Mãe excluído");
-    }
-    onSaved();
-  }
-
-  const totalAtivos = somaCartoesAtivos(data.cartoes);
-
-  // Agrupar lançamentos por cartão (banco/emissor)
-  const grupos = useMemo(() => {
-    const m: Record<string, any[]> = {};
-    for (const c of data.cartoes) {
-      const k = c.cartao || "Geral";
-      (m[k] ??= []).push(c);
-    }
-    return m;
-  }, [data.cartoes]);
-
-  const registry = data.cartoesRegistry ?? [];
-
-  return (
-    <div className="space-y-4">
-      {/* Cadastro de Cartões (registry) */}
-      <Card className="p-5 bg-card border-border">
-        <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-          <h3 className="font-semibold flex items-center gap-2"><CreditCard className="w-4 h-4 text-info" /> Meus Cartões Cadastrados</h3>
-          <Button size="sm" variant="outline" onClick={() => setRegOpen(true)}><Plus className="w-4 h-4 mr-1" />Cadastrar cartão</Button>
-        </div>
-        {registry.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Cadastre seus cartões (ex.: Santander, Nubank) antes de lançar gastos.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {registry.map((r: any) => (
-              <CartaoRegistryChip key={r.id} item={r} onChanged={onSaved} />
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {/* Lançamentos por cartão */}
-      <Card className="p-5 bg-card border-border">
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="font-semibold flex items-center gap-2">Lançamentos — Total ativo: <span className="tabular text-info">{BRL(totalAtivos)}</span></h3>
-          <div className="flex gap-2 flex-wrap">
-            {data.cartoes.length > 0 && (
-              <>
-                <Button variant="outline" size="sm" onClick={() => setSel(allCardSelected ? {} : Object.fromEntries(allCardIds.map((id: string) => [id, true])))}>
-                  {allCardSelected ? "Desmarcar tudo" : "Selecionar tudo"}
-                </Button>
-                {selectedCardIds.length > 0 && (
-                  <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirSelecionados}>
-                    <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir selecionados ({selectedCardIds.length})
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={excluirMesCompetencia}>
-                  <Trash2 className="w-3.5 h-3.5 mr-1" />Excluir todas do mês
-                </Button>
-              </>
-            )}
-            <Button onClick={() => { setEditing(null); setOpen(true); }} disabled={registry.length === 0} title={registry.length === 0 ? "Cadastre um cartão primeiro" : ""}>
-              <Plus className="w-4 h-4 mr-1" />Novo lançamento
-            </Button>
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">Soma do bloco = soma exata dos itens ativos. Desative a fatura mãe quando detalhar os itens.</p>
-        {data.cartoes.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhum lançamento de cartão.</p>}
-
-        <div className="space-y-5">
-          {Object.entries(grupos).map(([nomeCartao, itens]) => {
-            const ativos = (itens as any[]).filter((c) => c.ativo);
-            const subtotal = ativos.reduce((s, c) => s + Number(c.valor), 0);
-            const pendentes = ativos.filter((c) => c.status === "PENDENTE");
-            const pagos = ativos.filter((c) => c.status === "PAGO");
-            const totalPend = pendentes.reduce((s, c) => s + Number(c.valor), 0);
-            const totalPagos = pagos.reduce((s, c) => s + Number(c.valor), 0);
-            const statusFatura = pendentes.length === 0 && pagos.length > 0 ? "PAGO" : "PENDENTE";
-            return (
-              <div key={nomeCartao} className="rounded-lg border border-border bg-background/40">
-                <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-secondary/30 rounded-t-lg flex-wrap gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <CreditCard className="w-4 h-4 text-info" />
-                    <span className="font-semibold">{nomeCartao}</span>
-                    <Badge variant="outline" className="text-[10px]">{(itens as any[]).length} itens</Badge>
-                    <Badge className={statusFatura === "PAGO" ? "bg-success/20 text-success border-success/30" : "bg-warning/20 text-warning border-warning/40"}>
-                      {statusFatura === "PAGO" ? "FATURA PAGA" : "FATURA PENDENTE"}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-sm">
-                      <span className="text-muted-foreground mr-1">Subtotal:</span>
-                      <span className="font-bold tabular text-info">{BRL(subtotal)}</span>
-                    </div>
-                    {pendentes.length > 0 && (
-                      <Button size="sm" className="h-8 bg-success hover:bg-success/90 text-success-foreground" onClick={() => pagarFatura(itens as any[])}>
-                        Pagar Fatura ({BRL(totalPend)})
-                      </Button>
-                    )}
-                    {pagos.length > 0 && pendentes.length === 0 && (
-                      <Button size="sm" variant="outline" className="h-8 border-warning/40 text-warning hover:bg-warning/10" onClick={() => estornarFatura(itens as any[])} title={`Estornar ${BRL(totalPagos)}`}>
-                        Estornar Fatura
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <div className="p-3 space-y-2">
-                  {[...(itens as any[])].sort((a, b) => {
-                    const sa = a.status === "PENDENTE" ? 0 : 1;
-                    const sb = b.status === "PENDENTE" ? 0 : 1;
-                    if (sa !== sb) return sa - sb;
-                    return new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
-                  }).map((c: any) => (
-                    <div key={c.id} className={`flex items-center gap-3 p-3 rounded-md border ${sel[c.id] ? "bg-destructive/5 border-destructive/30" : c.consolidado ? "bg-warning/10 border-warning/40" : c.ativo ? "bg-secondary/40 border-border" : "bg-secondary/10 border-border/40 opacity-60"}`}>
-                      <Checkbox checked={!!sel[c.id]} onCheckedChange={(v) => setSel({ ...sel, [c.id]: !!v })} />
-                      <Checkbox checked={c.ativo} onCheckedChange={() => toggleAtivo(c)} title="Ativo na soma" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium truncate">{c.descricao}</span>
-                          <Badge
-                            variant="outline"
-                            className={`cursor-pointer ${c.status === "PAGO" ? "bg-success/15 text-success border-success/30" : "bg-warning/15 text-warning border-warning/30"}`}
-                            onClick={() => togglePagoItem(c)}
-                            title="Clique para alternar Pago/Pendente"
-                          >
-                            {c.status}
-                          </Badge>
-                          {c.consolidado && (
-                            <Badge className="bg-warning/20 text-warning border-warning/40 uppercase text-[10px] tracking-wide">
-                              Lançamento de Controle Provisório
-                            </Badge>
-                          )}
-                          <Badge variant="outline" className={c.fatura === "seguinte" ? "bg-warning/15 text-warning border-warning/30" : "bg-info/15 text-info border-info/30"}>
-                            {c.fatura === "seguinte" ? "Fatura Seguinte" : "Fatura Atual"}
-                          </Badge>
-                          {c.parcela_total > 1 && <Badge variant="outline" className="text-[10px]">{c.parcela_num}/{c.parcela_total}</Badge>}
-                        </div>
-
-                        <div className="text-xs text-muted-foreground">
-                          {c.categoria}{c.data_compra ? ` · compra ${c.data_compra}` : ""}
-                          {c.consolidado && <span className="ml-1 text-warning">· desative ao detalhar gastos reais</span>}
-                        </div>
-                      </div>
-                      <div className="font-bold tabular text-info">{BRL(Number(c.valor))}</div>
-                      <div className="flex gap-1">
-                        {c.consolidado && (
-                          <Button size="sm" variant="outline" className="h-8 text-[11px] border-warning/40 text-warning hover:bg-warning/10" onClick={() => desativarMae(c)} title="Desativar/Excluir Valor Mãe">
-                            Desativar Valor Mãe
-                          </Button>
-                        )}
-                        <Button size="icon" variant="ghost" onClick={() => toggleFatura(c)} title="Alternar fatura"><Calendar className="w-4 h-4" /></Button>
-                        <Button size="icon" variant="ghost" onClick={() => { setEditing(c); setOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
-                        <Button size="icon" variant="ghost" onClick={() => clonar(c)}><Copy className="w-4 h-4" /></Button>
-                        <Button size="icon" variant="ghost" onClick={() => deletar(c.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <CartaoForm open={open} onOpenChange={setOpen} comp={comp} editing={editing} registry={registry} onSaved={() => { setOpen(false); onSaved(); }} />
-        <CartaoRegistryForm open={regOpen} onOpenChange={setRegOpen} onSaved={() => { setRegOpen(false); onSaved(); }} />
-      </Card>
-    </div>
-  );
-}
-
-function CartaoRegistryChip({ item, onChanged }: any) {
-  const [editOpen, setEditOpen] = useState(false);
-  async function excluir() {
-    if (!confirm(`Excluir o cartão "${item.nome}"? Lançamentos já existentes permanecerão.`)) return;
-    const { error } = await (supabase.from as any)("cartoes_registry").delete().eq("id", item.id);
-    if (error) toast.error(error.message); else { toast.success("Cartão removido"); onChanged(); }
-  }
-  return (
-    <>
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary/50 border border-border text-sm">
-        <CreditCard className="w-3.5 h-3.5 text-info" />
-        <span className="font-medium">{item.nome}</span>
-        {item.banco && <span className="text-xs text-muted-foreground">· {item.banco}</span>}
-        <span className="text-[10px] text-muted-foreground">· Limite {BRL(Number(item.limite ?? 0))} · Fecha dia {item.dia_fechamento ?? "—"} · Vence dia {item.dia_vencimento ?? "—"}</span>
-        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEditOpen(true)}><Edit2 className="w-3.5 h-3.5" /></Button>
-        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={excluir}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>
-      </div>
-      <CartaoRegistryForm open={editOpen} onOpenChange={setEditOpen} editing={item} onSaved={() => { setEditOpen(false); onChanged(); }} />
-    </>
-  );
-}
-
-function CartaoRegistryForm({ open, onOpenChange, editing, onSaved }: any) {
-  const empty = { nome: "", banco: "", limite: "0", dia_fechamento: "1", dia_vencimento: "10" };
-  const [form, setForm] = useState<any>(empty);
-  useEffect(() => {
-    if (!open) return;
-    setForm(editing ? {
-      nome: editing.nome ?? "", banco: editing.banco ?? "",
-      limite: String(editing.limite ?? 0), dia_fechamento: String(editing.dia_fechamento ?? 1),
-      dia_vencimento: String(editing.dia_vencimento ?? 10),
-    } : empty);
-  }, [open, editing]); // eslint-disable-line
-  async function salvar() {
-    if (!form.nome.trim()) return toast.error("Informe o nome do cartão");
-    const diaFech = Math.max(1, Math.min(31, Number(form.dia_fechamento) || 1));
-    const diaVenc = Math.max(1, Math.min(31, Number(form.dia_vencimento) || 10));
-    const payload: any = {
-      nome: form.nome.trim(), banco: form.banco.trim() || null,
-      limite: Number(form.limite) || 0, dia_fechamento: diaFech, dia_vencimento: diaVenc,
-    };
-    if (editing?.id) {
-      const { error } = await (supabase.from as any)("cartoes_registry").update(payload).eq("id", editing.id);
-      if (error) return toast.error(error.message);
-    } else {
-      const { data: u } = await supabase.auth.getUser();
-      const { error } = await (supabase.from as any)("cartoes_registry").insert({ ...payload, user_id: u.user!.id });
-      if (error) return toast.error(error.message);
-    }
-    toast.success("Cartão salvo"); onSaved();
-  }
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{editing ? "Editar" : "Cadastrar"} Cartão</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div><Label>Nome do Cartão</Label><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Santander Black" /></div>
-          <div><Label>Banco / Emissor</Label><Input value={form.banco} onChange={(e) => setForm({ ...form, banco: e.target.value })} placeholder="Ex: Santander" /></div>
-          <div><Label>Limite / Meta de Gastos (R$)</Label><Input type="number" step="0.01" value={form.limite} onChange={(e) => setForm({ ...form, limite: e.target.value })} /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>Dia de Fechamento da Fatura</Label><Input type="number" min="1" max="31" value={form.dia_fechamento} onChange={(e) => setForm({ ...form, dia_fechamento: e.target.value })} /></div>
-            <div><Label>Dia de Vencimento da Fatura</Label><Input type="number" min="1" max="31" value={form.dia_vencimento} onChange={(e) => setForm({ ...form, dia_vencimento: e.target.value })} /></div>
-          </div>
-        </div>
-        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function CartaoForm({ open, onOpenChange, comp, editing, registry, onSaved }: any) {
-  const empty = {
-    cartao: registry?.[0]?.nome ?? "", descricao: "", valor: "",
-    categoria: "Outros", data_compra: hojeISO(),
-    fatura: "atual",
-    parcelado: false, parcela_atual: "1", parcela_total: "1",
-    status: "PENDENTE", consolidado: false, ativo: true,
-  };
-  const [form, setForm] = useState<any>(empty);
-  useEffect(() => {
-    if (!open) return;
-    setForm(editing ? {
-      ...empty, ...editing,
-      data_compra: editing.data_compra ?? hojeISO(),
-      parcelado: Number(editing.parcela_total ?? 1) > 1,
-      parcela_atual: String(editing.parcela_num ?? 1),
-      parcela_total: String(editing.parcela_total ?? 1),
-      fatura: editing.fatura ?? "atual",
-      categoria: editing.categoria || "Outros",
-    } : { ...empty, cartao: registry?.[0]?.nome ?? "" });
-  }, [editing, open]); // eslint-disable-line
-
-  // Cálculo automático: data > dia_fechamento => empurra p/ fatura seguinte
-  const cartaoReg = (registry ?? []).find((r: any) => r.nome === form.cartao);
-  const diaFech = Number(cartaoReg?.dia_fechamento ?? 0);
-  const diaCompra = form.data_compra ? Number(form.data_compra.slice(8, 10)) : 0;
-  const empurrar = diaFech > 0 && diaCompra > diaFech;
-  useEffect(() => {
-    if (editing) return;
-    setForm((f: any) => ({ ...f, fatura: empurrar ? "seguinte" : "atual" }));
-  }, [empurrar, editing]);
-
-  function addMonths(c: string, n: number) {
-    const [y, m] = c.split("-").map(Number);
-    const d = new Date(y, m - 1 + n, 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-  }
-
-  async function salvar() {
-    if (!form.cartao) return toast.error("Selecione um cartão");
-    const { data: u } = await supabase.auth.getUser();
-    const valor = Number(form.valor) || 0;
-    const isParcelado = !!form.parcelado;
-    const total = Math.max(1, Number(form.parcela_total) || 1);
-    const atual = Math.min(total, Math.max(1, Number(form.parcela_atual) || 1));
-
-    if (editing?.id) {
-      const payload: any = {
-        cartao: form.cartao, descricao: form.descricao, valor,
-        categoria: form.categoria, fatura: form.fatura,
-        data_compra: form.data_compra || null,
-        status: form.status, consolidado: !!form.consolidado, ativo: !!form.ativo,
-      };
-      const { error } = await supabase.from("cartoes_lancamentos").update(payload).eq("id", editing.id);
-      if (error) return toast.error(error.message);
-    } else {
-      const offsetBase = form.fatura === "seguinte" ? 1 : 0;
-      // Replica APENAS as parcelas restantes: da [atual] até [total]
-      const restantes = isParcelado ? (total - atual + 1) : 1;
-      const rows = Array.from({ length: restantes }).map((_, i) => {
-        const compI = addMonths(comp, offsetBase + i);
-        const parcNum = isParcelado ? atual + i : 1;
-        const parcTot = isParcelado ? total : 1;
-        const desc = isParcelado ? `${form.descricao} (${parcNum}/${parcTot})` : form.descricao;
-        return {
-          user_id: u.user!.id, cartao: form.cartao, descricao: desc, valor,
-          categoria: form.categoria, competencia: compI,
-          fatura: i === 0 ? form.fatura : "atual",
-          data_compra: form.data_compra || null,
-          parcela_num: parcNum, parcela_total: parcTot,
-          status: "PENDENTE", consolidado: !!form.consolidado, ativo: true,
-        };
-      });
-      const { error } = await supabase.from("cartoes_lancamentos").insert(rows as any);
-      if (error) return toast.error(error.message);
-    }
-    toast.success("Salvo"); onSaved();
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} Lançamento de Cartão</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Cartão *</Label>
-              <Select value={form.cartao} onValueChange={(v) => setForm({ ...form, cartao: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  {(registry ?? []).map((r: any) => (
-                    <SelectItem key={r.id} value={r.nome}>{r.nome}{r.banco ? ` · ${r.banco}` : ""}</SelectItem>
-                  ))}
-                  {editing?.cartao && !(registry ?? []).some((r: any) => r.nome === editing.cartao) && (
-                    <SelectItem value={editing.cartao}>{editing.cartao} (legado)</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Categoria</Label>
-              <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{CATEGORIAS_DESPESA.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div><Label>Descrição</Label><Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} /></div>
-          <div className="grid grid-cols-3 gap-3">
-            <div><Label>Valor (R$)</Label><Input type="number" step="0.01" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} /></div>
-            <div><Label>Data da Compra</Label><DatePicker value={form.data_compra} onChange={(v) => setForm({ ...form, data_compra: v })} /></div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={form.parcelado} onCheckedChange={(v) => setForm({ ...form, parcelado: !!v })} disabled={!!editing} />
-                <span>Compra parcelada</span>
-              </label>
-            </div>
-          </div>
-          {form.parcelado && (
-            <div className="grid grid-cols-2 gap-3 p-3 rounded-md bg-secondary/30 border border-border">
-              <div>
-                <Label>Parcela Atual *</Label>
-                <Input type="number" min="1" value={form.parcela_atual} onChange={(e) => setForm({ ...form, parcela_atual: e.target.value })} disabled={!!editing} />
-              </div>
-              <div>
-                <Label>Total de Parcelas *</Label>
-                <Input type="number" min="1" value={form.parcela_total} onChange={(e) => setForm({ ...form, parcela_total: e.target.value })} disabled={!!editing} />
-              </div>
-              <p className="col-span-2 text-[11px] text-muted-foreground">
-                Ex.: parcela 10 de 12 → o sistema cria 10/12 neste mês, 11/12 no próximo e 12/12 no subsequente, encerrando automaticamente.
-              </p>
-            </div>
-          )}
-          <div>
-            <Label>Status da Fatura</Label>
-            <Select value={form.fatura} onValueChange={(v) => setForm({ ...form, fatura: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="atual">Fatura Atual</SelectItem>
-                <SelectItem value="seguinte">Fatura Seguinte</SelectItem>
-              </SelectContent>
-            </Select>
-            {diaFech > 0 && (
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Fechamento dia {diaFech} · Vencimento dia {Number(cartaoReg?.dia_vencimento) || "—"}. {empurrar ? "Como a data é após o fechamento, sugerimos Fatura Seguinte." : "Dentro do ciclo atual."}
-              </p>
-            )}
-          </div>
-          <label className="flex items-start gap-2 text-sm pt-2 border-t border-border">
-            <Checkbox checked={form.consolidado} onCheckedChange={(v) => setForm({ ...form, consolidado: !!v })} />
-            <span>
-              Este é um <strong>Lançamento Mãe (Consolidado)</strong>
-              <span className="block text-[11px] text-muted-foreground">Use para registrar o total provisório da fatura. Desative-o quando começar a detalhar os gastos reais para evitar duplicidade.</span>
-            </span>
-          </label>
-        </div>
-        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ───── CONSIGNADOS ───── */
-function ConsignadosView({ data, comp, onSaved }: any) {
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-  const [amortOpen, setAmortOpen] = useState<any>(null);
-
-  async function deletar(c: any) {
-    if (!confirm(`Excluir definitivamente o contrato "${c.nome}"? Eventos vinculados serão mantidos no histórico.`)) return;
-    const { error } = await supabase.from("consignados_contratos").delete().eq("id", c.id);
-    if (error) toast.error(error.message); else { toast.success("Contrato excluído"); onSaved(); }
-  }
-
-  async function avancarParcela(c: any) {
-    if (c.parcela_atual >= c.total_parcelas) return toast.error("Não há parcelas restantes");
-    if (!confirm(`Confirmar desconto de ${BRL(Number(c.valor_parcela))} no contracheque e avançar 1 parcela de "${c.nome}"?\n\nParcela atual: ${c.parcela_atual}/${c.total_parcelas}`)) return;
-    const novaParcela = c.parcela_atual + 1;
-    const novoSaldo = Math.max(0, Number(c.saldo_devedor) - Number(c.valor_parcela));
-
-    // Busca a conta "Folha de Pagamento" para vincular a despesa
-    let contaFolhaId: string | null = null;
-    const { data: contas } = await (supabase.from as any)("contas").select("id,nome").eq("ativa", true);
-    if (contas) {
-      const folha = contas.find((ct: any) => ct.nome.toLowerCase().includes("folha"));
-      contaFolhaId = folha?.id ?? null;
-    }
-
-    // Cria a despesa conciliada PAGO no mês selecionado, vinculada à conta Folha de Pagamento
-    const { data: u } = await supabase.auth.getUser();
-    let despesaId: string | null = null;
-    if (u.user) {
-      const { data: ins, error: eDesp } = await supabase.from("despesas").insert({
-        user_id: u.user.id,
-        competencia: comp,
-        data_venc: comp,
-        descricao: c.nome,
-        categoria: "Consignado",
-        valor: Number(c.valor_parcela),
-        status: "PAGO",
-        tipo: "consignado",
-        recorrente: true,
-        status_conciliacao: contaFolhaId ? "CONCILIADO" : "NAO_CONCILIADO",
-        conta_id: contaFolhaId,
-      }).select("id").single();
-      if (eDesp) {
-        toast.error(eDesp.message);
-        return;
-      }
-      despesaId = ins?.id ?? null;
-    }
-
-    const { error } = await supabase.from("consignados_contratos")
-      .update({ parcela_atual: novaParcela, saldo_devedor: novoSaldo, ultimo_avanco: comp })
-      .eq("id", c.id);
-    if (error) return toast.error(error.message);
-    await (supabase.from as any)("consignados_eventos").insert({
-      user_id: data.userId, contrato_id: c.id, competencia: comp,
-      tipo: "avanco", parcelas_abatidas: 1,
-      despesa_id: despesaId,
-    });
-    if (novaParcela >= c.total_parcelas) {
-      toast.success(`"${c.nome}" quitado! ${c.total_parcelas}/${c.total_parcelas} parcelas pagas.`);
-    } else {
-      toast.success(`Parcela abatida: ${novaParcela}/${c.total_parcelas} · ${c.total_parcelas - novaParcela} restantes`);
-    }
-    onSaved();
-  }
-
-  return (
-    <Card className="p-5 bg-card border-border">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-semibold flex items-center gap-2"><Landmark className="w-4 h-4 text-info" /> Consignados (Retenção em Folha · impacto neutro)</h3>
-        <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Novo contrato</Button>
-      </div>
-      {data.contratos.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nenhum contrato ativo.</p>}
-      <div className="space-y-3">
-        {data.contratos.map((c: any) => {
-          const pct = (c.parcela_atual / c.total_parcelas) * 100;
-          const restantes = Math.max(0, c.total_parcelas - c.parcela_atual);
-          return (
-            <div key={c.id} className="p-4 rounded-md bg-secondary/40 border border-border">
-              <div className="flex justify-between items-start gap-3 mb-2 flex-wrap">
-                <div>
-                  <div className="font-semibold">{c.nome}</div>
-                  <div className="text-xs text-muted-foreground">{c.banco ?? "—"}{c.taxa_juros_mensal != null ? ` · ${Number(c.taxa_juros_mensal).toFixed(2)}% a.m.` : ""} · Parcela {c.parcela_atual}/{c.total_parcelas} · {restantes} restantes</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-muted-foreground">Saldo Devedor</div>
-                  <div className="font-bold tabular text-warning">{BRL(Number(c.saldo_devedor))}</div>
-                </div>
-              </div>
-              <Progress value={pct} className="mb-3" />
-              <div className="flex justify-between items-center text-sm flex-wrap gap-2">
-                <span className="text-muted-foreground">Parcela: <span className="text-foreground font-medium tabular">{BRL(Number(c.valor_parcela))}</span></span>
-                <div className="flex gap-2">
-                  {c.ativo && c.parcela_atual < c.total_parcelas && (
-                    <Button size="sm" variant="outline" className="border-success/40 text-success hover:bg-success/10" onClick={() => avancarParcela(c)} title="Confirmar desconto no contracheque e avançar 1 parcela">
-                      <ArrowUpFromLine className="w-4 h-4 mr-1" />Abater Parcela
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={() => setAmortOpen(c)}><Trophy className="w-4 h-4 mr-1" />Amortizar</Button>
-                  <Button size="sm" variant="outline" onClick={() => { setEditing(c); setOpen(true); }}><Edit2 className="w-4 h-4 mr-1" />Editar</Button>
-                  <Button size="sm" variant="outline" onClick={() => deletar(c)} className="text-destructive hover:text-destructive"><Trash2 className="w-4 h-4 mr-1" />Excluir</Button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <AbatimentosList eventos={data.eventos} contratos={data.contratos} onSaved={onSaved} />
-      <ContratoForm open={open} onOpenChange={setOpen} editing={editing} onSaved={() => { setOpen(false); onSaved(); }} />
-      <AmortizarDialog contrato={amortOpen} onClose={() => setAmortOpen(null)} comp={comp} onSaved={() => { setAmortOpen(null); onSaved(); }} />
-    </Card>
-  );
-}
-
-function AbatimentosList({ eventos, contratos, onSaved }: any) {
-  const [editing, setEditing] = useState<any>(null);
-  const items = (eventos ?? []).filter((e: any) => e.tipo === "amortizacao");
-  const nomeContrato = (id: string) => contratos?.find((c: any) => c.id === id)?.nome ?? "Contrato";
-
-  async function excluir(ev: any) {
-    if (!confirm("Excluir este abatimento? O saldo devedor e parcelas do contrato serão restaurados.")) return;
-    const { data: c } = await supabase.from("consignados_contratos").select("*").eq("id", ev.contrato_id).maybeSingle();
-    if (c) {
-      await supabase.from("consignados_contratos").update({
-        total_parcelas: Number(c.total_parcelas) + Number(ev.parcelas_abatidas ?? 0),
-        saldo_devedor: Number(c.saldo_devedor) + Number(ev.reducao_bruta ?? 0),
-      }).eq("id", c.id);
-    }
-    if (ev.despesa_id) await supabase.from("despesas").delete().eq("id", ev.despesa_id);
-    await supabase.from("consignados_eventos").delete().eq("id", ev.id);
-    toast.success("Abatimento revertido"); onSaved();
-  }
-
-  if (items.length === 0) return null;
-  return (
-    <div className="mt-6 pt-4 border-t border-border">
-      <h4 className="text-sm font-semibold text-muted-foreground mb-2">Histórico de Abatimentos Extraordinários</h4>
-      <div className="space-y-2">
-        {items.map((ev: any) => (
-          <div key={ev.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/30 border border-border text-sm">
-            <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">{nomeContrato(ev.contrato_id)} · {ev.competencia}</div>
-              <div className="text-xs text-muted-foreground">
-                Pago: <span className="tabular text-warning">{BRL(Number(ev.valor_extra ?? 0))}</span> ·
-                Redução: <span className="tabular">{BRL(Number(ev.reducao_bruta ?? 0))}</span> ·
-                Parcelas: {ev.parcelas_abatidas} ·
-                Juros destruídos: <span className="tabular text-success">{BRL(Number(ev.juros_salvos ?? 0))}</span>
-              </div>
-            </div>
-            <Button size="icon" variant="ghost" onClick={() => setEditing(ev)}><Edit2 className="w-4 h-4" /></Button>
-            <Button size="icon" variant="ghost" onClick={() => excluir(ev)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-          </div>
-        ))}
-      </div>
-      <AbatimentoEditForm editing={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onSaved(); }} />
-    </div>
-  );
-}
-
-function AbatimentoEditForm({ editing, onClose, onSaved }: any) {
-  const [form, setForm] = useState<any>({ valor_extra: "", parcelas_abatidas: "1", reducao_bruta: "" });
-  useEffect(() => {
-    if (!editing) return;
-    setForm({
-      valor_extra: String(editing.valor_extra ?? 0),
-      parcelas_abatidas: String(editing.parcelas_abatidas ?? 1),
-      reducao_bruta: String(editing.reducao_bruta ?? 0),
-    });
-  }, [editing]);
-  if (!editing) return null;
-  const ve = Number(form.valor_extra) || 0;
-  const rb = Number(form.reducao_bruta) || 0;
-  const js = Math.max(0, rb - ve);
-
-  async function salvar() {
-    // Diff contrato: re-aplicar delta entre estado antigo e novo
-    const { data: c } = await supabase.from("consignados_contratos").select("*").eq("id", editing.contrato_id).maybeSingle();
-    if (c) {
-      const deltaParc = Number(editing.parcelas_abatidas ?? 0) - (Number(form.parcelas_abatidas) || 0);
-      const deltaSaldo = Number(editing.reducao_bruta ?? 0) - rb;
-      await supabase.from("consignados_contratos").update({
-        total_parcelas: Math.max(0, Number(c.total_parcelas) + deltaParc),
-        saldo_devedor: Math.max(0, Number(c.saldo_devedor) + deltaSaldo),
-      }).eq("id", c.id);
-    }
-    await (supabase.from as any)("consignados_eventos").update({
-      valor_extra: ve, parcelas_abatidas: Number(form.parcelas_abatidas) || 1,
-      reducao_bruta: rb, juros_salvos: js,
-    }).eq("id", editing.id);
-    if (editing.despesa_id) {
-      await supabase.from("despesas").update({ valor: ve }).eq("id", editing.despesa_id);
-    }
-    toast.success("Abatimento atualizado"); onSaved();
-  }
-
-  return (
-    <Dialog open={!!editing} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Editar Abatimento</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div><Label>Valor Extra Pago (R$)</Label><Input type="number" step="0.01" value={form.valor_extra} onChange={(e) => setForm({ ...form, valor_extra: e.target.value })} /></div>
-          <div><Label>Parcelas Abatidas</Label><Input type="number" value={form.parcelas_abatidas} onChange={(e) => setForm({ ...form, parcelas_abatidas: e.target.value })} /></div>
-          <div><Label>Redução Bruta no Saldo (R$)</Label><Input type="number" step="0.01" value={form.reducao_bruta} onChange={(e) => setForm({ ...form, reducao_bruta: e.target.value })} /></div>
-          <div className="p-2 rounded bg-success/10 border border-success/30 text-xs">Juros destruídos: <strong className="text-success">{BRL(js)}</strong></div>
-        </div>
-        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ContratoForm({ open, onOpenChange, editing, onSaved }: any) {
-  const empty = { nome: "", banco: "", taxa_juros_mensal: "", valor_parcela: "", total_parcelas: "", saldo_devedor: "", parcela_atual: "0" };
-  const [form, setForm] = useState<any>(empty);
-  useEffect(() => {
-    if (!open) return;
-    if (editing) {
-      setForm({
-        nome: editing.nome ?? "",
-        banco: editing.banco ?? "",
-        taxa_juros_mensal: editing.taxa_juros_mensal != null ? String(editing.taxa_juros_mensal) : "",
-        valor_parcela: String(editing.valor_parcela ?? ""),
-        total_parcelas: String(editing.total_parcelas ?? ""),
-        saldo_devedor: String(editing.saldo_devedor ?? ""),
-        parcela_atual: String(editing.parcela_atual ?? "0"),
-      });
-    } else {
-      setForm(empty);
-    }
-  }, [editing, open]);
-
-  async function salvar() {
-    const { data: u } = await supabase.auth.getUser();
-    const payload = {
-      user_id: u.user!.id,
-      nome: form.nome,
-      banco: form.banco || null,
-      taxa_juros_mensal: form.taxa_juros_mensal === "" ? null : Number(form.taxa_juros_mensal),
-      valor_parcela: Number(form.valor_parcela),
-      total_parcelas: Number(form.total_parcelas),
-      saldo_devedor: Number(form.saldo_devedor),
-      parcela_atual: Number(form.parcela_atual),
-    };
-    if (editing?.id) {
-      const { error } = await supabase.from("consignados_contratos").update(payload).eq("id", editing.id);
-      if (error) return toast.error(error.message);
-      toast.success("Contrato atualizado");
-    } else {
-      const { error } = await supabase.from("consignados_contratos").insert(payload);
-      if (error) return toast.error(error.message);
-      toast.success("Contrato criado");
-    }
-    onSaved();
-  }
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} Contrato Consignado</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>Nome do contrato</Label><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
-            <div><Label>Banco</Label><Input value={form.banco} onChange={(e) => setForm({ ...form, banco: e.target.value })} /></div>
-          </div>
-          <div><Label>Taxa de Juros (% a.m.)</Label><Input type="number" step="0.0001" value={form.taxa_juros_mensal} onChange={(e) => setForm({ ...form, taxa_juros_mensal: e.target.value })} placeholder="Ex: 1.85" /></div>
-          <div className="grid grid-cols-3 gap-3">
-            <div><Label>Valor Parcela</Label><Input type="number" step="0.01" value={form.valor_parcela} onChange={(e) => setForm({ ...form, valor_parcela: e.target.value })} /></div>
-            <div><Label>Parcela Atual</Label><Input type="number" value={form.parcela_atual} onChange={(e) => setForm({ ...form, parcela_atual: e.target.value })} /></div>
-            <div><Label>Total Parcelas</Label><Input type="number" value={form.total_parcelas} onChange={(e) => setForm({ ...form, total_parcelas: e.target.value })} /></div>
-          </div>
-          <div><Label>Saldo Devedor Atual</Label><Input type="number" step="0.01" value={form.saldo_devedor} onChange={(e) => setForm({ ...form, saldo_devedor: e.target.value })} /></div>
-        </div>
-        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function AmortizarDialog({ contrato, onClose, comp, onSaved }: any) {
-  const [form, setForm] = useState({ valor_extra: "", parcelas_abatidas: "1", reducao_bruta: "" });
-  useEffect(() => { setForm({ valor_extra: "", parcelas_abatidas: "1", reducao_bruta: "" }); }, [contrato]);
-  if (!contrato) return null;
-
-  const valorExtra = Number(form.valor_extra) || 0;
-  const reducao = Number(form.reducao_bruta) || 0;
-  const jurosSalvos = Math.max(0, reducao - valorExtra);
-
-  async function aplicar() {
-    const { data: u } = await supabase.auth.getUser();
-    const parcAbat = Number(form.parcelas_abatidas) || 1;
-    const novoTotal = Math.max(0, contrato.total_parcelas - parcAbat);
-    const novoSaldo = Math.max(0, Number(contrato.saldo_devedor) - reducao);
-
-    const { error: e1 } = await supabase.from("consignados_contratos").update({
-      total_parcelas: novoTotal, saldo_devedor: novoSaldo,
-    }).eq("id", contrato.id);
-    if (e1) return toast.error(e1.message);
-
-    // Despesa real do tipo amortização no mês atual — criada antes para ter o id de vínculo
-    let despesaId: string | null = null;
-    if (valorExtra > 0) {
-      const { data: ins, error: eDesp } = await supabase.from("despesas").insert({
-        user_id: u.user!.id, competencia: comp, data_venc: hojeISO(),
-        descricao: `Amortização extraordinária — ${contrato.nome}`,
-        categoria: "Amortização", valor: valorExtra, status: "PAGO", tipo: "amortizacao", recorrente: false,
-      }).select("id").single();
-      if (eDesp) return toast.error(eDesp.message);
-      despesaId = ins?.id ?? null;
-    }
-
-    await (supabase.from as any)("consignados_eventos").insert({
-      user_id: u.user!.id, contrato_id: contrato.id, competencia: comp,
-      tipo: "amortizacao", parcelas_abatidas: parcAbat,
-      valor_extra: valorExtra, reducao_bruta: reducao, juros_salvos: jurosSalvos,
-      despesa_id: despesaId,
-    });
-
-    toast.success(`Você destruiu ${BRL(jurosSalvos)} em juros! 🏆`);
-    onSaved();
-  }
-
-  return (
-    <Dialog open={!!contrato} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Amortizar Extraordinário — {contrato.nome}</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div><Label>Valor Extra Pago (R$) — sai do caixa hoje</Label><Input type="number" step="0.01" value={form.valor_extra} onChange={(e) => setForm({ ...form, valor_extra: e.target.value })} /></div>
-          <div><Label>Quantidade de Parcelas Abatidas (de trás pra frente)</Label><Input type="number" value={form.parcelas_abatidas} onChange={(e) => setForm({ ...form, parcelas_abatidas: e.target.value })} /></div>
-          <div><Label>Redução Bruta no Saldo Devedor (R$)</Label><Input type="number" step="0.01" value={form.reducao_bruta} onChange={(e) => setForm({ ...form, reducao_bruta: e.target.value })} /></div>
-          <div className="p-3 rounded-md bg-success/10 border border-success/30">
-            <div className="text-xs text-muted-foreground">Juros Destruídos</div>
-            <div className="text-2xl font-bold text-success tabular">{BRL(jurosSalvos)}</div>
-            <div className="text-xs text-muted-foreground">= Redução Bruta − Valor Extra Pago</div>
-          </div>
-        </div>
-        <DialogFooter><Button onClick={aplicar}>Aplicar Amortização</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ───────────── RESERVAS / CAIXINHAS ───────────── */
-
-function ReservasView({ data, comp, onSaved }: any) {
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-  const [amortAlvo, setAmortAlvo] = useState<any>(null);
-  const reservas = (data.reservas ?? []) as any[];
-  const total = reservas.reduce((s, r) => s + Number(r.valor ?? 0), 0);
-
-  async function resgatar(r: any) {
-    const valor = Number(r.valor ?? 0);
-    if (!valor) return;
-    if (!confirm(`Resgatar ${BRL(valor)} da caixinha "${r.nome}" de volta para o Saldo?`)) return;
-    const { data: u } = await supabase.auth.getUser();
-    const { error: e1 } = await supabase.from("receitas").insert({
-      user_id: u.user!.id, competencia: comp, data: hojeISO(),
-      descricao: `Resgate — ${r.nome}${r.banco ? ` (${r.banco})` : ""}`,
-      categoria: "Investimentos", valor, status: "RECEBIDO",
-    });
-    if (e1) return toast.error(e1.message);
-    const { error: e2 } = await (supabase.from as any)("reservas").delete().eq("id", r.id);
-    if (e2) return toast.error(e2.message);
-    toast.success(`${BRL(valor)} de volta no Saldo`);
-    onSaved();
-  }
-
-  async function deletar(r: any) {
-    if (!confirm(`Excluir a caixinha "${r.nome}"? O valor NÃO volta para o Saldo (use "Resgatar" para isso).`)) return;
-    const { error } = await (supabase.from as any)("reservas").delete().eq("id", r.id);
-    if (error) return toast.error(error.message);
-    toast.success("Caixinha excluída");
-    onSaved();
-  }
-
-  return (
-    <Card className="p-5 bg-card border-border">
-      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-        <h3 className="font-semibold flex items-center gap-2">
-          <PiggyBank className="w-4 h-4 text-info" /> Reservas / Caixinhas
-          <Badge variant="outline" className="ml-2">{reservas.length} · Total {BRL(total)}</Badge>
-        </h3>
-        <Button onClick={() => { setEditing(null); setOpen(true); }}>
-          <Plus className="w-4 h-4 mr-1" />Nova caixinha
-        </Button>
-      </div>
-      <p className="text-xs text-muted-foreground mb-3">
-        Valor guardado sai do <strong>Saldo livre</strong> e passa a compor o <strong>Patrimônio Total</strong>.
-        Use "Resgatar" para devolver ao caixa, ou "Amortizar Consignado" para abater direto no saldo devedor.
-      </p>
-
-      {reservas.length === 0 && (
-        <p className="text-sm text-muted-foreground text-center py-6">Nenhuma caixinha cadastrada.</p>
-      )}
-
-      <div className="space-y-3">
-        {reservas.map((r) => (
-          <div key={r.id} className="p-4 rounded-md bg-secondary/40 border border-border">
-            <div className="flex justify-between items-start gap-3 mb-3 flex-wrap">
-              <div className="min-w-0">
-                <div className="font-semibold truncate">{r.nome}</div>
-                <div className="text-xs text-muted-foreground">{r.banco ?? "—"}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-muted-foreground">Guardado</div>
-                <div className="font-bold tabular text-info">{BRL(Number(r.valor))}</div>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={() => resgatar(r)}>
-                <ArrowUpFromLine className="w-4 h-4 mr-1" />Resgatar para o Saldo
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setAmortAlvo(r)}
-                disabled={!(data.contratos ?? []).length}
-                title={!(data.contratos ?? []).length ? "Nenhum contrato consignado ativo" : ""}
-              >
-                <Trophy className="w-4 h-4 mr-1" />Usar para Amortizar Consignado
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => { setEditing(r); setOpen(true); }}>
-                <Edit2 className="w-4 h-4 mr-1" />Editar
-              </Button>
-              <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => deletar(r)}>
-                <Trash2 className="w-4 h-4 mr-1" />Excluir
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <ReservaForm open={open} onOpenChange={setOpen} editing={editing} comp={comp} onSaved={() => { setOpen(false); onSaved(); }} />
-      <ReservaAmortizarDialog reserva={amortAlvo} contratos={data.contratos ?? []} comp={comp} onClose={() => setAmortAlvo(null)} onSaved={() => { setAmortAlvo(null); onSaved(); }} />
-    </Card>
-  );
-}
-
-function ReservaForm({ open, onOpenChange, editing, comp, onSaved }: any) {
-  const empty = { nome: "", banco: "", valor: "", competencia: comp };
-  const [form, setForm] = useState<any>(editing ?? empty);
-  useEffect(() => { setForm(editing ?? { ...empty, competencia: comp }); }, [editing, open, comp]); // eslint-disable-line
-
-  async function salvar() {
-    if (!form.nome?.trim()) return toast.error("Informe o nome da caixinha");
-    const payload: any = {
-      nome: String(form.nome).trim(),
-      banco: form.banco ? String(form.banco).trim() : null,
-      valor: Number(form.valor) || 0,
-      competencia: form.competencia || comp,
-    };
-    if (editing?.id) {
-      const { error } = await (supabase.from as any)("reservas").update(payload).eq("id", editing.id);
-      if (error) return toast.error(error.message);
-      toast.success("Caixinha atualizada");
-    } else {
-      const { data: u } = await supabase.auth.getUser();
-      const { error } = await (supabase.from as any)("reservas").insert({ ...payload, user_id: u.user!.id });
-      if (error) return toast.error(error.message);
-      toast.success(`Caixinha criada · ${BRL(payload.valor)} saíram do Saldo livre`);
-    }
-    onSaved();
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{editing ? "Editar" : "Nova"} caixinha</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div><Label>Nome da Caixinha</Label><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex.: Caixinha Turbo Nubank" /></div>
-          <div><Label>Banco</Label><Input value={form.banco ?? ""} onChange={(e) => setForm({ ...form, banco: e.target.value })} placeholder="Ex.: Nubank" /></div>
-          <div><Label>Valor Guardado (R$)</Label><Input type="number" step="0.01" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} /></div>
-          <div><Label>Competência do Aporte</Label><Input type="month" value={String(form.competencia ?? comp).slice(0,7)} onChange={(e) => setForm({ ...form, competencia: `${e.target.value}-01` })} /><p className="text-xs text-muted-foreground mt-1">Mês em que o dinheiro foi guardado. A caixinha só aparece a partir desta competência.</p></div>
-        </div>
-        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ReservaAmortizarDialog({ reserva, contratos, comp, onClose, onSaved }: any) {
-  const [contratoId, setContratoId] = useState<string>("");
-  const [valor, setValor] = useState<string>("");
-  const [reducao, setReducao] = useState<string>("");
-  const [parcelas, setParcelas] = useState<string>("1");
-
-  useEffect(() => {
-    if (!reserva) return;
-    setContratoId(contratos?.[0]?.id ?? "");
-    setValor(String(Number(reserva.valor ?? 0)));
-    setReducao(String(Number(reserva.valor ?? 0)));
-    setParcelas("1");
-  }, [reserva, contratos]);
-
-  if (!reserva) return null;
-
-  const contrato = contratos.find((c: any) => c.id === contratoId);
-  const ve = Number(valor) || 0;
-  const rb = Number(reducao) || 0;
-  const js = Math.max(0, rb - ve);
-  const disponivel = Number(reserva.valor ?? 0);
-
-  async function aplicar() {
-    if (!contrato) return toast.error("Selecione um contrato consignado");
-    if (ve <= 0) return toast.error("Valor a amortizar deve ser maior que zero");
-    if (ve > disponivel + 0.001) return toast.error(`Caixinha só tem ${BRL(disponivel)} guardado`);
-
-    const { data: u } = await supabase.auth.getUser();
-    const parcAbat = Number(parcelas) || 1;
-    const novoTotal = Math.max(0, Number(contrato.total_parcelas) - parcAbat);
-    const novoSaldoDev = Math.max(0, Number(contrato.saldo_devedor) - rb);
-
-    const { error: e1 } = await supabase.from("consignados_contratos").update({
-      total_parcelas: novoTotal, saldo_devedor: novoSaldoDev,
-    }).eq("id", contrato.id);
-    if (e1) return toast.error(e1.message);
-
-    // Evento de amortização — sem despesa vinculada (dinheiro veio da caixinha, já estava fora do saldo livre)
-    await (supabase.from as any)("consignados_eventos").insert({
-      user_id: u.user!.id, contrato_id: contrato.id, competencia: comp,
-      tipo: "amortizacao", parcelas_abatidas: parcAbat,
-      valor_extra: ve, reducao_bruta: rb, juros_salvos: js, despesa_id: null,
-    });
-
-    // Baixa na caixinha
-    const restante = Math.max(0, disponivel - ve);
-    if (restante <= 0.001) {
-      await (supabase.from as any)("reservas").delete().eq("id", reserva.id);
-    } else {
-      await (supabase.from as any)("reservas").update({ valor: restante }).eq("id", reserva.id);
-    }
-
-    toast.success(`Amortização aplicada · ${BRL(js)} em juros destruídos 🏆`);
-    onSaved();
-  }
-
-  return (
-    <Dialog open={!!reserva} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Amortizar Consignado com "{reserva.nome}"</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="text-xs text-muted-foreground">
-            Guardado nesta caixinha: <strong className="text-info tabular">{BRL(disponivel)}</strong>
-          </div>
-          <div>
-            <Label>Contrato Consignado</Label>
-            <Select value={contratoId} onValueChange={setContratoId}>
-              <SelectTrigger><SelectValue placeholder="Selecione o contrato" /></SelectTrigger>
-              <SelectContent>
-                {contratos.map((c: any) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.nome} · Saldo {BRL(Number(c.saldo_devedor))}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div><Label>Valor Amortizado (R$) — sai da caixinha</Label><Input type="number" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} /></div>
-          <div><Label>Parcelas Abatidas (de trás pra frente)</Label><Input type="number" value={parcelas} onChange={(e) => setParcelas(e.target.value)} /></div>
-          <div><Label>Redução Bruta no Saldo Devedor (R$)</Label><Input type="number" step="0.01" value={reducao} onChange={(e) => setReducao(e.target.value)} /></div>
-          <div className="p-3 rounded-md bg-success/10 border border-success/30">
-            <div className="text-xs text-muted-foreground">Juros Destruídos</div>
-            <div className="text-2xl font-bold text-success tabular">{BRL(js)}</div>
-            <div className="text-xs text-muted-foreground">= Redução Bruta − Valor Amortizado</div>
-          </div>
-        </div>
-        <DialogFooter><Button onClick={aplicar}>Aplicar Amortização</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
