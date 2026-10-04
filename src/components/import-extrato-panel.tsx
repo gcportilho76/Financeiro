@@ -232,6 +232,7 @@ export function ImportExtratoPanel({
             status_conciliacao: r._contaId ? "CONCILIADO" : "NAO_CONCILIADO",
           });
         } else {
+          const eConsignado = r.categoria === "Consignado";
           despesas.push({
             user_id: uid,
             competencia: compDestino,
@@ -239,8 +240,8 @@ export function ImportExtratoPanel({
             descricao: r.descricao,
             categoria: r.categoria || "Outros",
             valor: r.valor,
-            status: r._status === "PAGO" ? "PAGO" : "PENDENTE",
-            tipo: "variavel",
+            status: "PAGO",
+            tipo: eConsignado ? "consignado" : "variavel",
             recorrente: false,
             status_conciliacao: r._contaId ? "CONCILIADO" : "NAO_CONCILIADO",
             conta_id: r._contaId || null,
