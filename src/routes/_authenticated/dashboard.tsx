@@ -573,6 +573,7 @@ function ReceitaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
 }
 
 function CartoesView({ data, comp, onSaved }: any) {
+  const cartoesLista = data?.cartoes ?? data?.cartoesRegistry ?? [];
   const [openCartao, setOpenCartao] = useState(false);
   const [editingCartao, setEditingCartao] = useState<any>(null);
 
@@ -597,20 +598,20 @@ function CartoesView({ data, comp, onSaved }: any) {
         </Button>
       </div>
 
-      {data.cartoes.length === 0 ? (
+      {cartoesLista.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
           <p className="text-sm">Nenhum cartão cadastrado ainda.</p>
           <p className="text-xs mt-1">Clique em "Novo Cartão" para definir o nome, fechamento e vencimento.</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {data.cartoes.map((c: any) => (
+          {cartoesLista.map((c: any) => (
             <div key={c.id} className="flex items-center justify-between p-4 rounded-lg bg-secondary/30 border border-border">
               <div>
                 <div className="font-medium text-base flex items-center gap-2">
                   {c.nome}
-                  <Badge variant={c.ativo ? "default" : "secondary"}>
-                    {c.ativo ? "Ativo" : "Inativo"}
+                  <Badge variant={c.ativo !== false ? "default" : "secondary"}>
+                    {c.ativo !== false ? "Ativo" : "Inativo"}
                   </Badge>
                 </div>
                 <div className="text-xs text-muted-foreground mt-1 flex gap-4">
@@ -636,7 +637,6 @@ function CartoesView({ data, comp, onSaved }: any) {
         </div>
       )}
 
-      {/* Modal para Adicionar / Editar Cartão */}
       <CartaoForm 
         open={openCartao} 
         onOpenChange={setOpenCartao} 
@@ -647,9 +647,6 @@ function CartoesView({ data, comp, onSaved }: any) {
   );
 }
 
-function CartaoForm({ open, onOpenChange, editing, onSaved }: any) {
-  const empty = { nome: "", dia_fechamento: "1", dia_vencimento: "10", limite: "", categoria: "Cartão", ativo: true };
-  const [form, setForm] = useState<any>(empty);
 
   useEffect(() => {
     setForm(editing ? {
