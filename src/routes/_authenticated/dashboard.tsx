@@ -1349,7 +1349,8 @@ function CartoesView({ data, comp, onSaved }: any) {
   const [editing, setEditing] = useState<any>(null);
   const [regOpen, setRegOpen] = useState(false);
   const [sel, setSel] = useState<Record<string, boolean>>({});
-  const allCardIds = data.cartoes.map((c: any) => c.id);
+  const cartoesRegistry = data?.cartoesRegistry ?? data?.cartoesCadastrados?.data ?? [];
+  const allCardIds = cartoesRegistry.map((c: any) => c.id);
   const allCardSelected = allCardIds.length > 0 && allCardIds.every((id: string) => sel[id]);
   const selectedCardIds = allCardIds.filter((id: string) => sel[id]);
 
