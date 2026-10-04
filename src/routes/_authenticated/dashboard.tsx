@@ -1430,7 +1430,7 @@ function CartoesView({ data, comp, onSaved }: any) {
     return m;
   }, [data.cartoes]);
 
-  const registry = data.cartoesRegistry ?? [];
+  const registry = data?.cartoesRegistry ?? data?.cartoesCadastrados?.data ?? data?.cartoesCadastrados ?? [];
 
   return (
     <div className="space-y-4">
