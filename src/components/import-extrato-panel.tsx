@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Upload, FileText, Loader as Loader2, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Trash2, Save, RefreshCw, Calendar } from "lucide-react";
+import { Upload, FileText, Loader as Loader2, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Trash2, Save, RefreshCw, Calendar, Landmark } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,7 +37,8 @@ type RowItem = ExtractedItem & {
   _id: string;
   _selected: boolean;
   _status: "PREVISTO" | "RECEBIDO" | "PAGO" | "PENDENTE";
-  _cartao: string; // nome do cartão cadastrado, se aplicável
+  _cartao: string;
+  _contaId: string;
 };
 
 const CATEGORIAS = [
@@ -86,14 +87,24 @@ export function ImportExtratoPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cartoesRegistry, setCartoesRegistry] = useState<any[]>([]);
   const [cartaoPadrao, setCartaoPadrao] = useState<string>("");
+  const [contas, setContas] = useState<any[]>([]);
+  const [contaPadrao, setContaPadrao] = useState<string>("");
   const [compDestino, setCompDestino] = useState<string>(comp);
   useEffect(() => { setCompDestino(comp); }, [comp]);
 
-  // Carrega cartões cadastrados ao abrir
   async function loadCartoes() {
     const { data } = await (supabase.from as any)("cartoes_registry").select("*").order("nome");
     setCartoesRegistry(data ?? []);
     if (data && data.length > 0 && !cartaoPadrao) setCartaoPadrao(data[0].nome);
+  }
+
+  async function loadContas() {
+    const { data } = await (supabase.from as any)("contas").select("*").eq("ativa", true).order("nome");
+    setContas(data ?? []);
+    if (data && data.length > 0) {
+      const folha = data.find((c: any) => c.nome.toLowerCase().includes("folha"));
+      setContaPadrao(folha ? folha.id : data[0].id);
+    }
   }
 
   const reset = useCallback(() => {
@@ -158,8 +169,9 @@ export function ImportExtratoPanel({
         ...item,
         _id: `${Date.now()}-${i}`,
         _selected: true,
-        _status: item.tipo === "receita" ? "PREVISTO" : "PENDENTE",
+        _status: item.tipo === "receita" ? "RECEBIDO" : "PAGO",
         _cartao: item.categoria === "Cartão" ? cartaoPadrao : "",
+        _contaId: contaPadrao,
       }));
 
       setRows(newRows);
@@ -202,6 +214,8 @@ export function ImportExtratoPanel({
             categoria: r.categoria || "Outros",
             valor: r.valor,
             status: r._status === "RECEBIDO" ? "RECEBIDO" : "PREVISTO",
+            status_conciliacao: r._contaId ? "CONCILIADO" : "NAO_CONCILIADO",
+            conta_id: r._contaId || null,
           });
         } else if (r.categoria === "Cartão" && r._cartao) {
           cartoesLanc.push({
@@ -215,6 +229,7 @@ export function ImportExtratoPanel({
             status: r._status === "PAGO" ? "PAGO" : "PENDENTE",
             fatura: "atual",
             ativo: true,
+            status_conciliacao: r._contaId ? "CONCILIADO" : "NAO_CONCILIADO",
           });
         } else {
           despesas.push({
@@ -227,6 +242,8 @@ export function ImportExtratoPanel({
             status: r._status === "PAGO" ? "PAGO" : "PENDENTE",
             tipo: "variavel",
             recorrente: false,
+            status_conciliacao: r._contaId ? "CONCILIADO" : "NAO_CONCILIADO",
+            conta_id: r._contaId || null,
           });
         }
       }
@@ -328,17 +345,17 @@ export function ImportExtratoPanel({
         </div>
       </Card>
 
-      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); if (o) loadCartoes(); }}>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); if (o) { loadCartoes(); loadContas(); } }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Importar Extrato/Fatura com IA</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Seletor de mês de destino */}
-            <div className="flex items-center gap-2 p-3 rounded-md bg-info/10 border border-info/30 text-sm">
+            {/* Seletor de mês e conta de destino */}
+            <div className="flex flex-wrap items-center gap-2 p-3 rounded-md bg-info/10 border border-info/30 text-sm">
               <Calendar className="w-4 h-4 text-info shrink-0" />
-              <span className="text-muted-foreground">Mês de destino (orçamento):</span>
+              <span className="text-muted-foreground">Mês:</span>
               <Select value={compDestino} onValueChange={setCompDestino}>
                 <SelectTrigger className="h-8 w-44 text-xs">
                   <SelectValue />
@@ -349,7 +366,22 @@ export function ImportExtratoPanel({
                   ))}
                 </SelectContent>
               </Select>
-              <span className="text-xs text-muted-foreground">Os lançamentos serão salvos neste mês.</span>
+              <Landmark className="w-4 h-4 text-info shrink-0 ml-2" />
+              <span className="text-muted-foreground">Conta:</span>
+              <Select value={contaPadrao} onValueChange={(v) => {
+                setContaPadrao(v);
+                setRows((prev) => prev.map((r) => ({ ...r, _contaId: v })));
+              }}>
+                <SelectTrigger className="h-8 w-48 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {contas.map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">Lançamentos conciliados nesta conta.</span>
             </div>
 
             {/* Upload area */}
@@ -460,6 +492,7 @@ export function ImportExtratoPanel({
                         <th className="p-2 text-left">Tipo</th>
                         <th className="p-2 text-left">Categoria</th>
                         <th className="p-2 text-left">Cartão</th>
+                        <th className="p-2 text-left">Conta</th>
                         <th className="p-2 text-left">Status</th>
                         <th className="p-2 text-right">Valor</th>
                         <th className="p-2 w-8"></th>
@@ -539,6 +572,21 @@ export function ImportExtratoPanel({
                           </td>
                           <td className="p-2">
                             <Select
+                              value={r._contaId || ""}
+                              onValueChange={(v) => updateRow(r._id, { _contaId: v })}
+                            >
+                              <SelectTrigger className="h-8 w-36 text-xs">
+                                <SelectValue placeholder="A definir" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {contas.map((c: any) => (
+                                  <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="p-2">
+                            <Select
                               value={r._status}
                               onValueChange={(v) =>
                                 updateRow(r._id, { _status: v as RowItem["_status"] })
@@ -590,7 +638,7 @@ export function ImportExtratoPanel({
                     </tbody>
                     <tfoot>
                       <tr className="bg-muted/30 font-medium">
-                        <td colSpan={7} className="p-2 text-right text-xs">
+                        <td colSpan={8} className="p-2 text-right text-xs">
                           Selecionadas ({selecionados.length}):
                         </td>
                         <td className="p-2 text-right tabular text-sm" colSpan={2}>
@@ -612,7 +660,7 @@ export function ImportExtratoPanel({
                     {selecionados.length > 0 && (
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <CheckCircle2 className="w-3.5 h-3.5 text-success" />
-                        {selecionados.length} prontas para salvar em {comp.slice(0, 7)}
+                        {selecionados.length} prontas para salvar em {compDestino.slice(0, 7)}
                       </div>
                     )}
                     <Button onClick={salvar} disabled={saving || selecionados.length === 0}>

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { BRL, hojeISO } from "@/lib/finance";
+import { BRL, hojeISO, competenciaAtual } from "@/lib/finance";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Landmark, Plus, Edit2, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Landmark, Plus, Edit2, Trash2, CheckCircle2, AlertTriangle, ArrowLeftRight } from "lucide-react";
 import { VinculacaoPanel } from "@/components/vinculacao-panel";
 import { toast } from "sonner";
 
@@ -75,6 +75,8 @@ export function ContasPanel({ userId }: { userId: string }) {
   const qc = useQueryClient();
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [transfer, setTransfer] = useState<{ origem: Conta; valor: string; destinoId: string } | null>(null);
+  const [transferSaving, setTransferSaving] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["contas"],
@@ -198,6 +200,52 @@ export function ContasPanel({ userId }: { userId: string }) {
     refresh();
   };
 
+  const contasAtivas = (data?.contas ?? []).filter((c) => c.ativa);
+
+  const abrirTransferencia = (origem: Conta, saldoCalculado: number) => {
+    const destino = contasAtivas.find((c) => c.id !== origem.id);
+    setTransfer({
+      origem,
+      valor: String(saldoCalculado.toFixed(2)),
+      destinoId: destino?.id ?? "",
+    });
+  };
+
+  const confirmarTransferencia = async () => {
+    if (!transfer) return;
+    const valor = num(transfer.valor);
+    if (valor <= 0) { toast.error("Informe um valor válido."); return; }
+    if (!transfer.destinoId) { toast.error("Selecione a conta de destino."); return; }
+    if (transfer.destinoId === transfer.origem.id) { toast.error("A conta de destino deve ser diferente."); return; }
+    setTransferSaving(true);
+    try {
+      const comp = competenciaAtual();
+      const dataLanc = hojeISO();
+      const desc = `Transferência — ${transfer.origem.nome} → ${contasAtivas.find(c => c.id === transfer.destinoId)?.nome ?? ""}`;
+      const { error: e1 } = await (supabase.from as any)("despesas").insert({
+        user_id: userId, competencia: comp, data_venc: dataLanc,
+        descricao: desc, categoria: "Transferência", valor,
+        status: "PAGO", tipo: "variavel", recorrente: false,
+        status_conciliacao: "CONCILIADO", conta_id: transfer.origem.id,
+      });
+      if (e1) throw e1;
+      const { error: e2 } = await (supabase.from as any)("receitas").insert({
+        user_id: userId, competencia: comp, data: dataLanc,
+        descricao: desc, categoria: "Transferência", valor,
+        status: "RECEBIDO", origem: "transferencia",
+        status_conciliacao: "CONCILIADO", conta_id: transfer.destinoId,
+      });
+      if (e2) throw e2;
+      toast.success(`Transferência de ${BRL(valor)} registrada.`);
+      setTransfer(null);
+      refresh();
+    } catch (e: any) {
+      toast.error(e.message ?? "Erro ao registrar transferência.");
+    } finally {
+      setTransferSaving(false);
+    }
+  };
+
   if (isLoading) {
     return <Card className="p-6 text-sm text-muted-foreground">Carregando contas...</Card>;
   }
@@ -299,6 +347,18 @@ export function ContasPanel({ userId }: { userId: string }) {
                 Pendências nesta conta: <strong>{pendencias}</strong>
               </p>
 
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => abrirTransferencia(conta, calculado)}
+                  disabled={contasAtivas.length < 2 || calculado <= 0}
+                  title="Transferir saldo para outra conta"
+                >
+                  <ArrowLeftRight className="h-4 w-4 mr-1" />Transferir
+                </Button>
+              </div>
+
               <div className="flex items-center gap-2 text-xs">
                 {informado === null ? (
                   <span className="text-muted-foreground">
@@ -330,6 +390,51 @@ export function ContasPanel({ userId }: { userId: string }) {
       </div>
 
       <VinculacaoPanel />
+
+      <Dialog open={!!transfer} onOpenChange={(o) => !o && setTransfer(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transferir saldo — {transfer?.origem.nome}</DialogTitle>
+          </DialogHeader>
+          {transfer && (
+            <div className="space-y-3">
+              <div className="grid gap-1.5">
+                <Label>Valor a transferir (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={transfer.valor}
+                  onChange={(e) => setTransfer({ ...transfer, valor: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">Saldo calculado da conta: {BRL(linhas.find(l => l.conta.id === transfer.origem.id)?.calculado ?? 0)}</p>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Conta de destino</Label>
+                <Select
+                  value={transfer.destinoId}
+                  onValueChange={(v) => setTransfer({ ...transfer, destinoId: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {contasAtivas.filter((c) => c.id !== transfer.origem.id).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Será criada uma despesa conciliada na conta de origem e uma receita conciliada na conta de destino.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransfer(null)}>Cancelar</Button>
+            <Button onClick={confirmarTransferencia} disabled={transferSaving}>
+              {transferSaving ? "Transferindo..." : "Confirmar transferência"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!form} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent className="max-w-lg">

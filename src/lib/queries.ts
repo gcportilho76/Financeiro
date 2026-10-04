@@ -80,12 +80,38 @@ export async function fetchAll(competencia: string) {
     : defaultSaldo;
 
 
+  const contratosAtivos = (contratos.data ?? []) as any[];
+
+  // Projeta parcelas de consignados como despesas previstas no mês atual
+  const despesasReais = (despesas.data ?? []) as Despesa[];
+  const consignadosSinteticos: Despesa[] = [];
+  for (const ct of contratosAtivos) {
+    if (!ct.ativo || ct.parcela_atual >= ct.total_parcelas) continue;
+    const jaExiste = despesasReais.some(
+      (d) => d.tipo === "consignado" && d.descricao === ct.nome && String(d.competencia) === competencia,
+    );
+    if (!jaExiste) {
+      consignadosSinteticos.push({
+        id: `sint-${ct.id}`,
+        competencia,
+        data_venc: competencia,
+        descricao: ct.nome,
+        categoria: "Consignado",
+        valor: Number(ct.valor_parcela),
+        status: "PENDENTE",
+        tipo: "consignado",
+        recorrente: true,
+      } as Despesa);
+    }
+  }
+  const despesasCompletas = [...despesasReais, ...consignadosSinteticos];
+
   return {
     profile: profile.data,
     receitas: (receitas.data ?? []) as Receita[],
-    despesas: (despesas.data ?? []) as Despesa[],
+    despesas: despesasCompletas,
     cartoes: (cartoes.data ?? []) as Cartao[],
-    contratos: (contratos.data ?? []) as Contrato[],
+    contratos: contratosAtivos as Contrato[],
     eventos: eventos.data ?? [],
     insumos: (insumos.data ?? []) as any[],
     cartoesRegistry: (cartoesRegistry.data ?? []) as any[],

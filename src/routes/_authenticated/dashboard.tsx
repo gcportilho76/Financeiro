@@ -1605,6 +1605,39 @@ function ConsignadosView({ data, comp, onSaved }: any) {
     if (!confirm(`Confirmar desconto de ${BRL(Number(c.valor_parcela))} no contracheque e avançar 1 parcela de "${c.nome}"?\n\nParcela atual: ${c.parcela_atual}/${c.total_parcelas}`)) return;
     const novaParcela = c.parcela_atual + 1;
     const novoSaldo = Math.max(0, Number(c.saldo_devedor) - Number(c.valor_parcela));
+
+    // Busca a conta "Folha de Pagamento" para vincular a despesa
+    let contaFolhaId: string | null = null;
+    const { data: contas } = await (supabase.from as any)("contas").select("id,nome").eq("ativa", true);
+    if (contas) {
+      const folha = contas.find((ct: any) => ct.nome.toLowerCase().includes("folha"));
+      contaFolhaId = folha?.id ?? null;
+    }
+
+    // Cria a despesa conciliada PAGO no mês selecionado, vinculada à conta Folha de Pagamento
+    const { data: u } = await supabase.auth.getUser();
+    let despesaId: string | null = null;
+    if (u.user) {
+      const { data: ins, error: eDesp } = await supabase.from("despesas").insert({
+        user_id: u.user.id,
+        competencia: comp,
+        data_venc: comp,
+        descricao: c.nome,
+        categoria: "Consignado",
+        valor: Number(c.valor_parcela),
+        status: "PAGO",
+        tipo: "consignado",
+        recorrente: true,
+        status_conciliacao: contaFolhaId ? "CONCILIADO" : "NAO_CONCILIADO",
+        conta_id: contaFolhaId,
+      }).select("id").single();
+      if (eDesp) {
+        toast.error(eDesp.message);
+        return;
+      }
+      despesaId = ins?.id ?? null;
+    }
+
     const { error } = await supabase.from("consignados_contratos")
       .update({ parcela_atual: novaParcela, saldo_devedor: novoSaldo, ultimo_avanco: comp })
       .eq("id", c.id);
@@ -1612,11 +1645,12 @@ function ConsignadosView({ data, comp, onSaved }: any) {
     await (supabase.from as any)("consignados_eventos").insert({
       user_id: data.userId, contrato_id: c.id, competencia: comp,
       tipo: "avanco", parcelas_abatidas: 1,
+      despesa_id: despesaId,
     });
     if (novaParcela >= c.total_parcelas) {
       toast.success(`"${c.nome}" quitado! ${c.total_parcelas}/${c.total_parcelas} parcelas pagas.`);
     } else {
-      toast.success(`Parcela avançada: ${novaParcela}/${c.total_parcelas} · ${c.total_parcelas - novaParcela} restantes`);
+      toast.success(`Parcela abatida: ${novaParcela}/${c.total_parcelas} · ${c.total_parcelas - novaParcela} restantes`);
     }
     onSaved();
   }
