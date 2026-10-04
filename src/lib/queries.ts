@@ -13,7 +13,6 @@ function nextCompetencia(c: string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-
 export async function fetchAll(competencia: string) {
   const { data: userRes } = await supabase.auth.getUser();
   const userId = userRes.user?.id;
@@ -22,7 +21,7 @@ export async function fetchAll(competencia: string) {
   const prev = prevCompetencia(competencia);
 
   const [
-    profile, receitas, despesas, cartoes, contratos, eventos, insumos, cartoesRegistry, reservas,
+    profile, receitas, despesas, cartoesLancamentos, contratos, eventos, insumos, cartoesCadastrados, reservas,
     saldosRows, receitasHist, despesasHist, cartoesHist,
   ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
@@ -32,7 +31,7 @@ export async function fetchAll(competencia: string) {
     supabase.from("consignados_contratos").select("*").eq("ativo", true).order("nome"),
     supabase.from("consignados_eventos").select("*").order("created_at", { ascending: false }),
     (supabase.from as any)("insumos").select("*").eq("competencia", competencia).order("validade", { ascending: true, nullsFirst: false }),
-    (supabase.from as any)("cartoes_registry").select("*").order("nome"),
+    (supabase.from as any)("cartoes").select("*").order("nome"),
     (supabase.from as any)("reservas").select("*").lte("competencia", competencia).order("created_at", { ascending: false }),
     (supabase.from as any)("saldos_mensais").select("*").lte("competencia", competencia).order("competencia"),
     supabase.from("receitas").select("*").lt("competencia", competencia),
@@ -79,7 +78,6 @@ export async function fetchAll(competencia: string) {
     ? Number(saldoMesRow.saldo_inicial)
     : defaultSaldo;
 
-
   const contratosAtivos = (contratos.data ?? []) as any[];
 
   // Projeta parcelas de consignados como despesas previstas no mês atual
@@ -110,11 +108,12 @@ export async function fetchAll(competencia: string) {
     profile: profile.data,
     receitas: (receitas.data ?? []) as Receita[],
     despesas: despesasCompletas,
-    cartoes: (cartoes.data ?? []) as Cartao[],
+    cartoes: (cartoesCadastrados.data ?? []) as Cartao[],
+    cartoesLancamentos: (cartoesLancamentos.data ?? []) as Cartao[],
     contratos: contratosAtivos as Contrato[],
     eventos: eventos.data ?? [],
     insumos: (insumos.data ?? []) as any[],
-    cartoesRegistry: (cartoesRegistry.data ?? []) as any[],
+    cartoesRegistry: (cartoesCadastrados.data ?? []) as any[],
     reservas: (reservas.data ?? []) as any[],
     saldoInicialMes,
     hasSaldoRow,
