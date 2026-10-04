@@ -573,23 +573,177 @@ function ReceitaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
 }
 
 function CartoesView({ data, comp, onSaved }: any) {
+  const [openCartao, setOpenCartao] = useState(false);
+  const [editingCartao, setEditingCartao] = useState<any>(null);
+
+  async function deletarCartao(id: string) {
+    if (!confirm("Tem certeza que deseja excluir este cartão?")) return;
+    const { error } = await supabase.from("cartoes").delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Cartão excluído!");
+      onSaved();
+    }
+  }
+
   return (
-    <Card className="p-5 bg-card border-border">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-semibold flex items-center gap-2"><CreditCard className="w-4 h-4 text-info" /> Faturas de Cartão</h3>
+    <Card className="p-5 bg-card border-border space-y-4">
+      <div className="flex justify-between items-center flex-wrap gap-2">
+        <h3 className="font-semibold flex items-center gap-2">
+          <CreditCard className="w-4 h-4 text-info" /> Faturas e Cartões de Crédito
+        </h3>
+        <Button onClick={() => { setEditingCartao(null); setOpenCartao(true); }}>
+          <Plus className="w-4 h-4 mr-1" /> Novo Cartão
+        </Button>
       </div>
-      <div className="space-y-2">
-        {data.cartoes.map((c: any) => (
-          <div key={c.id} className="flex items-center justify-between p-3 rounded-md bg-secondary/40 border border-border">
-            <div>
-              <div className="font-medium">{c.nome}</div>
-              <div className="text-xs text-muted-foreground">Vencimento: Dia {c.dia_vencimento || "—"}</div>
+
+      {data.cartoes.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
+          <p className="text-sm">Nenhum cartão cadastrado ainda.</p>
+          <p className="text-xs mt-1">Clique em "Novo Cartão" para definir o nome, fechamento e vencimento.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {data.cartoes.map((c: any) => (
+            <div key={c.id} className="flex items-center justify-between p-4 rounded-lg bg-secondary/30 border border-border">
+              <div>
+                <div className="font-medium text-base flex items-center gap-2">
+                  {c.nome}
+                  <Badge variant={c.ativo ? "default" : "secondary"}>
+                    {c.ativo ? "Ativo" : "Inativo"}
+                  </Badge>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 flex gap-4">
+                  <span>Fechamento: dia <strong>{c.dia_fechamento ?? "—"}</strong></span>
+                  <span>Vencimento: dia <strong>{c.dia_vencimento ?? "—"}</strong></span>
+                  {c.limite > 0 && <span>Limite: <strong>{BRL(Number(c.limite))}</strong></span>}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-lg tabular text-info">{BRL(Number(c.valor ?? 0))}</span>
+                <div className="flex gap-1">
+                  <Button size="icon" variant="ghost" onClick={() => { setEditingCartao(c); setOpenCartao(true); }}>
+                    <Edit2 className="w-4 h-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={() => deletarCartao(c.id)}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="font-bold tabular">{BRL(Number(c.valor || 0))}</div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal para Adicionar / Editar Cartão */}
+      <CartaoForm 
+        open={openCartao} 
+        onOpenChange={setOpenCartao} 
+        editing={editingCartao} 
+        onSaved={() => { setOpenCartao(false); onSaved(); }} 
+      />
     </Card>
+  );
+}
+
+function CartaoForm({ open, onOpenChange, editing, onSaved }: any) {
+  const empty = { nome: "", dia_fechamento: "1", dia_vencimento: "10", limite: "", categoria: "Cartão", ativo: true };
+  const [form, setForm] = useState<any>(empty);
+
+  useEffect(() => {
+    setForm(editing ? {
+      ...editing,
+      dia_fechamento: String(editing.dia_fechamento ?? 1),
+      dia_vencimento: String(editing.dia_vencimento ?? 10),
+      limite: String(editing.limite ?? "")
+    } : empty);
+  }, [editing, open]);
+
+  async function salvar() {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) return;
+
+    const payload: any = {
+      user_id: u.user.id,
+      nome: form.nome,
+      dia_fechamento: Number(form.dia_fechamento) || 1,
+      dia_vencimento: Number(form.dia_vencimento) || 10,
+      limite: Number(form.limite) || 0,
+      categoria: form.categoria || "Cartão",
+      ativo: form.ativo,
+    };
+
+    if (editing?.id) {
+      const { error } = await supabase.from("cartoes").update(payload).eq("id", editing.id);
+      if (error) return toast.error(error.message);
+    } else {
+      const { error } = await supabase.from("cartoes").insert(payload);
+      if (error) return toast.error(error.message);
+    }
+
+    toast.success("Cartão salvo com sucesso!");
+    onSaved();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{editing ? "Editar Cartão" : "Novo Cartão de Crédito"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          <div>
+            <Label>Nome do Cartão / Banco</Label>
+            <Input 
+              placeholder="Ex: Santander SX, Amazon Bradesco, Nubank" 
+              value={form.nome} 
+              onChange={(e) => setForm({ ...form, nome: e.target.value })} 
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Dia de Fechamento</Label>
+              <Input 
+                type="number" 
+                min="1" 
+                max="31" 
+                value={form.dia_fechamento} 
+                onChange={(e) => setForm({ ...form, dia_fechamento: e.target.value })} 
+              />
+            </div>
+            <div>
+              <Label>Dia de Vencimento</Label>
+              <Input 
+                type="number" 
+                min="1" 
+                max="31" 
+                value={form.dia_vencimento} 
+                onChange={(e) => setForm({ ...form, dia_vencimento: e.target.value })} 
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label>Limite do Cartão (R$) — Opcional</Label>
+            <Input 
+              type="number" 
+              step="0.01" 
+              placeholder="0,00" 
+              value={form.limite} 
+              onChange={(e) => setForm({ ...form, limite: e.target.value })} 
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={salvar}>Salvar Cartão</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
