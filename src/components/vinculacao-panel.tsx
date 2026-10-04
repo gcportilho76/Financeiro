@@ -200,6 +200,23 @@ export function VinculacaoPanel() {
     qc.invalidateQueries({ queryKey: ["fin"] });
   };
 
+  const alternarConciliacao = async (l: Linha) => {
+    const novoStatus = l.conciliacao === "CONCILIADO" ? "NAO_CONCILIADO" : "CONCILIADO";
+    const { error } = await (supabase.from as any)(l.tabela)
+      .update({ status_conciliacao: novoStatus })
+      .eq("id", l.id);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success(
+      novoStatus === "CONCILIADO" ? "Lançamento conciliado" : "Conciliação removida"
+    );
+    qc.invalidateQueries({ queryKey: ["vinculacao"] });
+  };
+
   const alterarUma = async (l: Linha, valor: string) => {
     const contaId = valor === A_DEFINIR ? null : valor;
     if (contaId === l.conta_id) return;
@@ -422,8 +439,18 @@ export function VinculacaoPanel() {
                 <td className="p-2">{l.categoria}</td>
                 <td className="p-2 text-xs text-muted-foreground">{l.forma || "—"}</td>
                 <td className="p-2 text-xs">{l.status}</td>
-                <td className="p-2 text-xs text-muted-foreground">
-                  {l.conciliacao === "CONCILIADO" ? "conciliado" : "não conciliado"}
+                <td className="p-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => alternarConciliacao(l)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors border ${
+                      l.conciliacao === "CONCILIADO"
+                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20"
+                        : "bg-muted text-muted-foreground border-transparent hover:bg-muted/80"
+                    }`}
+                  >
+                    {l.conciliacao === "CONCILIADO" ? "✓ conciliado" : "não conciliado"}
+                  </button>
                 </td>
                 <td className="p-2">
                   <div className="flex items-center gap-2">
