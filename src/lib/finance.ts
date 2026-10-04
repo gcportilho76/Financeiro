@@ -115,7 +115,7 @@ export function calcular({
   const salarioBaseNum = num(salarioBase);
 
   // Consignados são impacto neutro - já não contam como despesa cash
-  const despesasCash = despesas.filter((d) => d.tipo !== "consignado");
+  const despesasCash = despesas;
 
   // Modo planejamento (calculado antes dos totais para aplicar a projeção de salário base)
   const totalDias = diasNoMes(competencia);
