@@ -8,10 +8,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { 
-  Wallet, CreditCard, Plus, Edit2, Trash2, ChevronLeft, ChevronRight 
+  Wallet, CreditCard, Plus, Edit2, Trash2, ChevronLeft, ChevronRight,
+  TrendingUp, ArrowDownCircle, ArrowUpCircle, PiggyBank
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -19,7 +21,11 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 function DashboardPage() {
-  const [competencia, setCompetencia] = useState("2026-10-01");
+  const [competencia, setCompetencia] = useState(() => {
+    const hoje = new Date();
+    return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-01`;
+  });
+
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -29,17 +35,96 @@ function DashboardPage() {
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ["dashboard"] });
 
-  if (isLoading) return <div className="p-8 text-center">Carregando dados...</div>;
+  function mudarMes(delta: number) {
+    const [y, m] = competencia.split("-").map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    setCompetencia(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`);
+  }
+
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando painel financeiro...</div>;
+
+  const totalReceitas = (data?.receitas ?? []).reduce((acc: number, r: any) => acc + Number(r.valor || 0), 0);
+  const totalDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) => acc + Number(d.valor || 0), 0);
+  const saldoMes = totalReceitas - totalDespesas;
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Wallet className="w-6 h-6" /> Painel Financeiro
-        </h1>
+      {/* Cabeçalho e Seleção de Mês */}
+      <div className="flex justify-between items-center flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Wallet className="w-6 h-6 text-primary" /> Painel Financeiro
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Visão geral das suas finanças e cartões</p>
+        </div>
+
+        <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-lg border border-border">
+          <Button size="icon" variant="ghost" onClick={() => mudarMes(-1)}>
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <span className="font-semibold text-sm px-2">{competencia.slice(0, 7)}</span>
+          <Button size="icon" variant="ghost" onClick={() => mudarMes(1)}>
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
-      <CartoesView data={data} comp={competencia} onSaved={refetch} />
+      {/* Cards de Resumo */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="p-4 flex items-center gap-4">
+          <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-lg">
+            <ArrowUpCircle className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Receitas</p>
+            <p className="text-lg font-bold text-emerald-500">{BRL(totalReceitas)}</p>
+          </div>
+        </Card>
+
+        <Card className="p-4 flex items-center gap-4">
+          <div className="p-3 bg-rose-500/10 text-rose-500 rounded-lg">
+            <ArrowDownCircle className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Despesas</p>
+            <p className="text-lg font-bold text-rose-500">{BRL(totalDespesas)}</p>
+          </div>
+        </Card>
+
+        <Card className="p-4 flex items-center gap-4">
+          <div className="p-3 bg-primary/10 text-primary rounded-lg">
+            <PiggyBank className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Resultado do Mês</p>
+            <p className={`text-lg font-bold ${saldoMes >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+              {BRL(saldoMes)}
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Conteúdo com Abas */}
+      <Tabs defaultValue="cartoes" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="cartoes" className="flex items-center gap-2">
+            <CreditCard className="w-4 h-4" /> Cartões
+          </TabsTrigger>
+          <TabsTrigger value="resumo" className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" /> Geral
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="cartoes">
+          <CartoesView data={data} comp={competencia} onSaved={refetch} />
+        </TabsContent>
+
+        <TabsContent value="resumo">
+          <Card className="p-5 text-center text-sm text-muted-foreground">
+            Lançamentos e extrato de {competencia.slice(0, 7)}
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -63,7 +148,7 @@ function CartoesView({ data, comp, onSaved }: any) {
     <Card className="p-5 bg-card border-border space-y-4">
       <div className="flex justify-between items-center flex-wrap gap-2">
         <h3 className="font-semibold flex items-center gap-2">
-          <CreditCard className="w-4 h-4 text-info" /> Cartões de Crédito Cadastrados
+          <CreditCard className="w-4 h-4 text-primary" /> Cartões de Crédito Cadastrados
         </h3>
         <Button onClick={() => { setEditingCartao(null); setOpenCartao(true); }}>
           <Plus className="w-4 h-4 mr-1" /> Novo Cartão
