@@ -56,7 +56,6 @@ function Dashboard() {
     queryFn: () => fetchAll(comp),
   });
 
-  // Auto-avanço de consignados ao mudar para nova competência
   useEffect(() => {
     if (!data?.contratos?.length) return;
     (async () => {
@@ -125,7 +124,6 @@ function Dashboard() {
     <div className="min-h-screen bg-background text-foreground">
       <Toaster richColors theme="dark" position="top-right" />
 
-      {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-40 no-print">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
@@ -158,10 +156,8 @@ function Dashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6 print-area">
-        {/* Barra de Alertas */}
         <AlertsBar despesas={data.despesas ?? []} insumos={data.insumos ?? []} />
 
-        {/* Cards de topo */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <KpiCard label="Saldo" value={BRL(calc.saldoVivo)} hint={reservasGuardadas > 0 ? `Livre em conta · ${BRL(reservasGuardadas)} em caixinhas` : "Recebido − Pago"} icon={<Wallet />} accent />
           <KpiCard
@@ -196,7 +192,6 @@ function Dashboard() {
           />
         </Card>
 
-        {/* Mini resumo */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MiniStat label="Receitas" value={BRL(calc.totalReceitas)} sub={calc.receitaProjetada > 0 ? `Projeção salário base: ${BRL(calc.receitaProjetada)}` : `Recebidas: ${BRL(calc.recebidos)}`} color="success" />
           <MiniStat label="Despesas Cash" value={BRL(calc.totalDespesasCash)} sub={`Pagas: ${BRL(calc.despPagas)}`} color="warning" />
@@ -259,13 +254,11 @@ function Dashboard() {
           </TabsContent>
         </Tabs>
 
-        {/* Painel de Conquistas */}
         <ConquistasPanel eventos={data.eventos} contratos={data.contratos} comp={comp} jurosTotais={jurosTotais} />
       </main>
     </div>
   );
 }
-
 function ConquistasPanel({ eventos, contratos, comp, jurosTotais }: any) {
   const jurosMes = (eventos ?? [])
     .filter((e: any) => e.tipo === "amortizacao" && e.competencia === comp)
@@ -673,8 +666,6 @@ function ReceitasView({ data, comp, onSaved }: any) {
   const [editing, setEditing] = useState<any>(null);
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const allIds = (data.receitas ?? []).map((r: any) => r.id);
-  const allSelected = allIds.length > 0 && allIds.every((id: string) => sel[id]);
-  const selectedIds = allIds.filter((id: string) => sel[id]);
 
   async function clonar(r: any) {
     const { id, created_at, ...rest } = r;
@@ -702,7 +693,16 @@ function ReceitasView({ data, comp, onSaved }: any) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-medium truncate">{r.descricao}</span>
-                <Badge variant={r.status === "RECEBIDO" ? "default" : "outline"} className={r.status === "RECEBIDO" ? "bg-success/20 text-success border-success/30" : "border-warning/40 text-warning"}>
+                <Badge
+                  variant={r.status === "RECEBIDO" ? "default" : "outline"}
+                  className={`cursor-pointer ${r.status === "RECEBIDO" ? "bg-success/20 text-success border-success/30" : "border-warning/40 text-warning"}`}
+                  onClick={async () => {
+                    const novo = r.status === "RECEBIDO" ? "PREVISTO" : "RECEBIDO";
+                    await supabase.from("receitas").update({ status: novo }).eq("id", r.id);
+                    onSaved();
+                  }}
+                  title="Clique para alternar Recebido/Previsto"
+                >
                   {r.status}
                 </Badge>
               </div>
@@ -859,113 +859,191 @@ function DespesaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
 
 /* ───── CARTÕES ───── */
 function CartoesView({ data, comp, onSaved }: any) {
-  const cartoesRegistry = data?.cartoesRegistry ?? data?.cartoesCadastrados?.data ?? data?.cartoesCadastrados ?? data?.cartoes ?? [];
-  const [openCartao, setOpenCartao] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [regOpen, setRegOpen] = useState(false);
   const [editingCartao, setEditingCartao] = useState<any>(null);
+
+  const registry = data?.cartoesRegistry ?? data?.cartoesCadastrados?.data ?? data?.cartoesCadastrados ?? data?.cartoes ?? [];
+  const cartoesLancamentos = data?.cartoes ?? [];
+
+  async function clonar(c: any) {
+    const { id, created_at, ...rest } = c;
+    const next = proxCompetencia(c.competencia);
+    const { error } = await supabase.from("cartoes_lancamentos").insert({ ...rest, competencia: next, status: "PENDENTE" });
+    if (error) toast.error(error.message); else { toast.success("Clonado"); onSaved(); }
+  }
+
+  async function deletar(id: string) {
+    if (!confirm("Excluir lançamento?")) return;
+    await supabase.from("cartoes_lancamentos").delete().eq("id", id);
+    onSaved();
+  }
+
+  async function deletarCartaoRegistry(id: string) {
+    if (!confirm("Excluir este cartão do cadastro? Lançamentos vinculados serão mantidos.")) return;
+    const { error } = await supabase.from("cartoes").delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else { toast.success("Cartão removido!"); onSaved(); }
+  }
+
+  async function togglePagoItem(c: any) {
+    const novo = c.status === "PAGO" ? "PENDENTE" : "PAGO";
+    const { error } = await supabase.from("cartoes_lancamentos").update({ status: novo }).eq("id", c.id);
+    if (error) toast.error(error.message); else onSaved();
+  }
 
   const grupos = useMemo(() => {
     const m: Record<string, any[]> = {};
-    for (const c of (data?.cartoes ?? [])) {
+    for (const c of cartoesLancamentos) {
       const k = c.cartao || "Geral";
       if (!m[k]) m[k] = [];
       m[k].push(c);
     }
     return m;
-  }, [data?.cartoes]);
+  }, [cartoesLancamentos]);
 
-  async function deletarCartao(id: string) {
-    if (!confirm("Tem certeza que deseja excluir este cartão?")) return;
-    const { error } = await supabase.from("cartoes").delete().eq("id", id);
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Cartão excluído!");
-      onSaved();
-    }
-  }
+  const totalAtivos = somaCartoesAtivos(cartoesLancamentos);
 
   return (
-    <Card className="p-5 bg-card border-border space-y-6">
-      <div className="flex justify-between items-center flex-wrap gap-2">
-        <h3 className="font-semibold flex items-center gap-2 text-base">
-          <CreditCard className="w-4 h-4 text-primary" /> Cartões de Crédito Cadastrados
-        </h3>
-        <Button onClick={() => { setEditingCartao(null); setOpenCartao(true); }}>
-          <Plus className="w-4 h-4 mr-1" /> Cadastrar Cartão
-        </Button>
-      </div>
-
-      {cartoesRegistry.length === 0 ? (
-        <div className="text-center py-6 text-muted-foreground border border-dashed rounded-lg">
-          <p className="text-sm">Nenhum cartão cadastrado na lista.</p>
+    <div className="space-y-4">
+      {/* 1. Cartões Cadastrados */}
+      <Card className="p-5 bg-card border-border">
+        <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+          <h3 className="font-semibold flex items-center gap-2 text-base">
+            <CreditCard className="w-4 h-4 text-primary" /> Meus Cartões Cadastrados
+          </h3>
+          <Button size="sm" variant="outline" onClick={() => { setEditingCartao(null); setRegOpen(true); }}>
+            <Plus className="w-4 h-4 mr-1" /> Cadastrar Cartão
+          </Button>
         </div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {cartoesRegistry.map((c: any) => (
-            <div key={c.id} className="flex items-center justify-between p-4 rounded-lg bg-secondary/30 border border-border">
-              <div>
-                <div className="font-medium text-base flex items-center gap-2">
-                  {c.nome}
-                  <Badge variant={c.ativo !== false ? "default" : "secondary"}>
-                    {c.ativo !== false ? "Ativo" : "Inativo"}
-                  </Badge>
+
+        {registry.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Cadastre seus cartões (ex.: Nubank, Santander) para poder lançar gastos.</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {registry.map((c: any) => (
+              <div key={c.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border text-sm">
+                <div>
+                  <div className="font-medium flex items-center gap-2">
+                    {c.nome}
+                    <Badge variant={c.ativo !== false ? "default" : "secondary"} className="text-[10px]">
+                      {c.ativo !== false ? "Ativo" : "Inativo"}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1 flex flex-col gap-0.5">
+                    <span>Fechamento: dia <strong>{c.dia_fechamento ?? "—"}</strong></span>
+                    <span>Vencimento: dia <strong>{c.dia_vencimento ?? "—"}</strong></span>
+                    {Number(c.limite) > 0 && <span>Limite: <strong>{BRL(Number(c.limite))}</strong></span>}
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground mt-1 flex flex-col gap-0.5">
-                  <span>Fechamento: dia <strong>{c.dia_fechamento ?? "—"}</strong></span>
-                  <span>Vencimento: dia <strong>{c.dia_vencimento ?? "—"}</strong></span>
-                  {Number(c.limite) > 0 && <span>Limite: <strong>{BRL(Number(c.limite))}</strong></span>}
+
+                <div className="flex gap-1">
+                  <Button size="icon" variant="ghost" onClick={() => { setEditingCartao(c); setRegOpen(true); }}>
+                    <Edit2 className="w-4 h-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={() => deletarCartaoRegistry(c.id)}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
                 </div>
               </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
-              <div className="flex gap-1">
-                <Button size="icon" variant="ghost" onClick={() => { setEditingCartao(c); setOpenCartao(true); }}>
-                  <Edit2 className="w-4 h-4" />
-                </Button>
-                <Button size="icon" variant="ghost" onClick={() => deletarCartao(c.id)}>
-                  <Trash2 className="w-4 h-4 text-destructive" />
-                </Button>
-              </div>
-            </div>
-          ))}
+      {/* 2. Lançamentos de Compras no Cartão */}
+      <Card className="p-5 bg-card border-border">
+        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+          <h3 className="font-semibold flex items-center gap-2">
+            Lançamentos — Total ativo: <span className="tabular text-info">{BRL(totalAtivos)}</span>
+          </h3>
+          <Button onClick={() => { setEditing(null); setOpen(true); }} disabled={registry.length === 0} title={registry.length === 0 ? "Cadastre um cartão primeiro" : ""}>
+            <Plus className="w-4 h-4 mr-1" /> Novo Lançamento
+          </Button>
         </div>
-      )}
 
-      <CartaoCadastroForm 
-        open={openCartao} 
-        onOpenChange={setOpenCartao} 
-        editing={editingCartao} 
-        onSaved={() => { setOpenCartao(false); onSaved(); }} 
-      />
-    </Card>
+        {cartoesLancamentos.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-6">Nenhum lançamento de compra cadastrado neste mês.</p>
+        )}
+
+        <div className="space-y-4">
+          {Object.entries(grupos).map(([nomeCartao, itens]) => {
+            const subtotal = (itens as any[]).reduce((s, c) => s + (c.ativo !== false ? Number(c.valor) : 0), 0);
+            return (
+              <div key={nomeCartao} className="rounded-lg border border-border bg-background/40">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-secondary/30 rounded-t-lg">
+                  <span className="font-semibold text-sm flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-info" /> {nomeCartao}
+                  </span>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground mr-1">Subtotal:</span>
+                    <span className="font-bold tabular text-info">{BRL(subtotal)}</span>
+                  </div>
+                </div>
+                <div className="p-3 space-y-2">
+                  {(itens as any[]).map((c: any) => (
+                    <div key={c.id} className="flex items-center gap-3 p-3 rounded-md border bg-secondary/40 border-border">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium truncate">{c.descricao}</span>
+                          <Badge
+                            variant="outline"
+                            className={`cursor-pointer ${c.status === "PAGO" ? "bg-success/15 text-success border-success/30" : "bg-warning/15 text-warning border-warning/30"}`}
+                            onClick={() => togglePagoItem(c)}
+                          >
+                            {c.status}
+                          </Badge>
+                          {c.parcela_total > 1 && <Badge variant="outline" className="text-[10px]">{c.parcela_num}/{c.parcela_total}</Badge>}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {c.categoria}{c.data_compra ? ` · compra ${c.data_compra}` : ""}
+                        </div>
+                      </div>
+                      <div className="font-bold tabular text-info">{BRL(Number(c.valor))}</div>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => { setEditing(c); setOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
+                        <Button size="icon" variant="ghost" onClick={() => clonar(c)}><Copy className="w-4 h-4" /></Button>
+                        <Button size="icon" variant="ghost" onClick={() => deletar(c.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <CartaoLancamentoForm open={open} onOpenChange={setOpen} comp={comp} editing={editing} registry={registry} onSaved={() => { setOpen(false); onSaved(); }} />
+        <CartaoCadastroForm open={regOpen} onOpenChange={setRegOpen} editing={editingCartao} onSaved={() => { setRegOpen(false); onSaved(); }} />
+      </Card>
+    </div>
   );
 }
 
 function CartaoCadastroForm({ open, onOpenChange, editing, onSaved }: any) {
-  const [nome, setNome] = useState(editing?.nome ?? "");
-  const [fechamento, setFechamento] = useState(editing?.dia_fechamento ?? 1);
-  const [vencimento, setVencimento] = useState(editing?.dia_vencimento ?? 10);
-  const [limite, setLimite] = useState(editing?.limite ?? 0);
-  const [loading, setLoading] = useState(false);
+  const [nome, setNome] = useState("");
+  const [fechamento, setFechamento] = useState("1");
+  const [vencimento, setVencimento] = useState("10");
+  const [limite, setLimite] = useState("0");
 
   useEffect(() => {
+    if (!open) return;
     setNome(editing?.nome ?? "");
-    setFechamento(editing?.dia_fechamento ?? 1);
-    setVencimento(editing?.dia_vencimento ?? 10);
-    setLimite(editing?.limite ?? 0);
+    setFechamento(String(editing?.dia_fechamento ?? 1));
+    setVencimento(String(editing?.dia_vencimento ?? 10));
+    setLimite(String(editing?.limite ?? 0));
   }, [editing, open]);
 
   async function salvar() {
-    if (!nome) return toast.error("Informe o nome do cartão");
-    setLoading(true);
-
-    const { data: userRes } = await supabase.auth.getUser();
-    const userId = userRes.user?.id;
-
+    if (!nome.trim()) return toast.error("Informe o nome do cartão");
+    const { data: u } = await supabase.auth.getUser();
     const payload = {
-      nome,
-      dia_fechamento: Number(fechamento),
-      dia_vencimento: Number(vencimento),
-      limite: Number(limite),
-      user_id: userId,
+      nome: nome.trim(),
+      dia_fechamento: Number(fechamento) || 1,
+      dia_vencimento: Number(vencimento) || 10,
+      limite: Number(limite) || 0,
+      user_id: u.user?.id,
     };
 
     let res;
@@ -975,45 +1053,125 @@ function CartaoCadastroForm({ open, onOpenChange, editing, onSaved }: any) {
       res = await supabase.from("cartoes").insert(payload);
     }
 
-    setLoading(false);
-    if (res.error) {
-      toast.error(res.error.message);
-    } else {
-      toast.success("Cartão salvo!");
-      onSaved();
-    }
+    if (res.error) toast.error(res.error.message);
+    else { toast.success("Cartão salvo!"); onSaved(); }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{editing ? "Editar Cartão" : "Novo Cartão de Crédito"}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div>
-            <label className="text-xs font-medium">Nome do Cartão / Banco</label>
-            <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Santander" />
+        <DialogHeader><DialogTitle>{editing ? "Editar Cartão" : "Novo Cartão"}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div><Label>Nome do Cartão / Banco</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Nubank" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Dia Fechamento</Label><Input type="number" min="1" max="31" value={fechamento} onChange={(e) => setFechamento(e.target.value)} /></div>
+            <div><Label>Dia Vencimento</Label><Input type="number" min="1" max="31" value={vencimento} onChange={(e) => setVencimento(e.target.value)} /></div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-medium">Dia Fechamento</label>
-              <Input type="number" value={fechamento} onChange={(e) => setFechamento(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-medium">Dia Vencimento</label>
-              <Input type="number" value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
-            </div>
+          <div><Label>Limite (R$)</Label><Input type="number" step="0.01" value={limite} onChange={(e) => setLimite(e.target.value)} /></div>
+        </div>
+        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CartaoLancamentoForm({ open, onOpenChange, comp, editing, registry, onSaved }: any) {
+  const [cartao, setCartao] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [valor, setValor] = useState("");
+  const [categoria, setCategoria] = useState("Outros");
+  const [dataCompra, setDataCompra] = useState(hojeISO());
+
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setCartao(editing.cartao ?? registry?.[0]?.nome ?? "");
+      setDescricao(editing.descricao ?? "");
+      setValor(String(editing.valor ?? ""));
+      setCategoria(editing.categoria ?? "Outros");
+      setDataCompra(editing.data_compra ?? hojeISO());
+    } else {
+      setCartao(registry?.[0]?.nome ?? "");
+      setDescricao("");
+      setValor("");
+      setCategoria("Outros");
+      setDataCompra(hojeISO());
+    }
+  }, [editing, open, registry]);
+
+  async function salvar() {
+    if (!cartao) return toast.error("Selecione um cartão");
+    if (!descricao) return toast.error("Informe a descrição");
+    const { data: u } = await supabase.auth.getUser();
+
+    // Lógica do dia de fechamento
+    const cartaoReg = (registry ?? []).find((r: any) => r.nome === cartao);
+    const diaFechamento = Number(cartaoReg?.dia_fechamento ?? 31);
+    const diaCompraNum = dataCompra ? Number(dataCompra.slice(8, 10)) : 1;
+
+    let competenciaFinal = comp;
+
+    // Se o dia da compra for MAIOR que o dia do fechamento, vai para o mês seguinte
+    if (diaCompraNum > diaFechamento) {
+      competenciaFinal = proxCompetencia(comp);
+      toast.info(`Compra efetuada após o fechamento (dia ${diaFechamento}). Lançada na fatura do mês seguinte (${competenciaFinal.slice(0, 7)}).`);
+    }
+
+    const payload: any = {
+      user_id: u.user!.id,
+      cartao,
+      descricao,
+      valor: Number(valor) || 0,
+      categoria,
+      data_compra: dataCompra || null,
+      competencia: competenciaFinal,
+      status: "PENDENTE",
+      ativo: true,
+    };
+
+    let res;
+    if (editing?.id) {
+      res = await supabase.from("cartoes_lancamentos").update(payload).eq("id", editing.id);
+    } else {
+      res = await supabase.from("cartoes_lancamentos").insert(payload);
+    }
+
+    if (res.error) toast.error(res.error.message);
+    else { toast.success("Lançamento salvo!"); onSaved(); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{editing ? "Editar Lançamento" : "Novo Lançamento de Cartão"}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Cartão *</Label>
+            <Select value={cartao} onValueChange={setCartao}>
+              <SelectTrigger><SelectValue placeholder="Selecione o cartão" /></SelectTrigger>
+              <SelectContent>
+                {(registry ?? []).map((r: any) => (
+                  <SelectItem key={r.id} value={r.nome}>{r.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div><Label>Descrição</Label><Input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: Supermercado" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Valor (R$)</Label><Input type="number" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} /></div>
+            <div><Label>Data da Compra</Label><DatePicker value={dataCompra} onChange={setDataCompra} /></div>
           </div>
           <div>
-            <label className="text-xs font-medium">Limite (Opcional)</label>
-            <Input type="number" value={limite} onChange={(e) => setLimite(e.target.value)} />
+            <Label>Categoria</Label>
+            <Select value={categoria} onValueChange={setCategoria}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {CATEGORIAS_DESPESA.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={salvar} disabled={loading}>{loading ? "Salvando..." : "Salvar Cartão"}</Button>
-        </DialogFooter>
+        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
