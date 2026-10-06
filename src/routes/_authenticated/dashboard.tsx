@@ -1177,30 +1177,209 @@ function CartaoLancamentoForm({ open, onOpenChange, comp, editing, registry, onS
   );
 }
 
-/* ───── CONSIGNADOS ───── */
+/* ------ CONSIGNADOS ------ */
 function ConsignadosView({ data, comp, onSaved }: any) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+
+  const [nome, setNome] = useState('');
+  const [valorParcela, setValorParcela] = useState('');
+  const [saldoDevedor, setSaldoDevedor] = useState('');
+  const [totalParcelas, setTotalParcelas] = useState('');
+  const [parcelaAtual, setParcelaAtual] = useState('');
+
+  const handleOpenModal = (item?: any) => {
+    if (item) {
+      setEditingItem(item);
+      setNome(item.nome || '');
+      setValorParcela(item.valor_parcela || '');
+      setSaldoDevedor(item.saldo_devedor || '');
+      setTotalParcelas(item.total_parcelas || '');
+      setParcelaAtual(item.parcela_atual || '');
+    } else {
+      setEditingItem(null);
+      setNome('');
+      setValorParcela('');
+      setSaldoDevedor('');
+      setTotalParcelas('12');
+      setParcelaAtual('1');
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const contratosAtuais = data.contratos ?? [];
+    let novosContratos = [];
+
+    const contratoPayload = {
+      id: editingItem ? editingItem.id : crypto.randomUUID(),
+      nome,
+      valor_parcela: Number(valorParcela),
+      saldo_devedor: Number(saldoDevedor),
+      total_parcelas: Number(totalParcelas),
+      parcela_atual: Number(parcelaAtual),
+    };
+
+    if (editingItem) {
+      novosContratos = contratosAtuais.map((c: any) =>
+        c.id === editingItem.id ? contratoPayload : c
+      );
+    } else {
+      novosContratos = [...contratosAtuais, contratoPayload];
+    }
+
+    if (onSaved) {
+      await onSaved({ ...data, contratos: novosContratos });
+    }
+    setIsModalOpen(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Deseja realmente excluir este consignado?')) {
+      const novosContratos = (data.contratos ?? []).filter((c: any) => c.id !== id);
+      if (onSaved) {
+        await onSaved({ ...data, contratos: novosContratos });
+      }
+    }
+  };
+
   return (
-    <Card className="p-5 bg-card border-border">
-      <h3 className="font-semibold mb-3">Consignados</h3>
+    <Card className="p-5 bg-card border-border space-y-4">
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="font-semibold text-lg">Consignados</h3>
+        <Button size="sm" onClick={() => handleOpenModal()}>
+          + Novo Consignado
+        </Button>
+      </div>
+
       {(data.contratos ?? []).length === 0 ? (
         <p className="text-sm text-muted-foreground">Nenhum contrato cadastrado.</p>
       ) : (
         <div className="space-y-2">
           {(data.contratos ?? []).map((c: any) => (
-            <div key={c.id} className="p-3 bg-secondary/30 rounded border border-border flex justify-between">
+            <div
+              key={c.id}
+              className="p-3 bg-secondary/30 rounded border border-border flex items-center justify-between gap-2"
+            >
               <div>
                 <div className="font-medium">{c.nome}</div>
-                <div className="text-xs text-muted-foreground">Parcela: {BRL(Number(c.valor_parcela))}</div>
+                <div className="text-xs text-muted-foreground">
+                  Parcela: {BRL(Number(c.valor_parcela))}
+                  {c.total_parcelas && (
+                    <span className="ml-2 font-semibold text-primary">
+                      ({c.parcela_atual || 1}/{c.total_parcelas})
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="font-bold tabular text-warning">{BRL(Number(c.saldo_devedor))}</div>
+
+              <div className="flex items-center gap-3">
+                <div className="font-bold tabular text-warning">
+                  {BRL(Number(c.saldo_devedor))}
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => handleOpenModal(c)}
+                  >
+                    Editar
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => handleDelete(c.id)}
+                  >
+                    Excluir
+                  </Button>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Modal de Inserção e Edição */}
+      {isModalOpen && (
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {editingItem ? 'Editar Consignado' : 'Novo Consignado'}
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSave} className="space-y-3 pt-2">
+              <div>
+                <label className="text-xs font-medium">Nome / Descrição</label>
+                <Input
+                  required
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  placeholder="Ex: Consignado Banco do Brasil"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-medium">Valor Parcela (R$)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={valorParcela}
+                    onChange={(e) => setValorParcela(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium">Saldo Devedor (R$)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={saldoDevedor}
+                    onChange={(e) => setSaldoDevedor(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-medium">Total de Parcelas</label>
+                  <Input
+                    type="number"
+                    required
+                    value={totalParcelas}
+                    onChange={(e) => setTotalParcelas(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium">Parcela Atual</label>
+                  <Input
+                    type="number"
+                    required
+                    value={parcelaAtual}
+                    onChange={(e) => setParcelaAtual(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit">Guardar</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
     </Card>
   );
 }
-
 /* ───── RESERVAS ───── */
 function ReservasView({ data, comp, onSaved }: any) {
   return (
