@@ -250,9 +250,14 @@ function Dashboard() {
           </TabsContent>
 
           <TabsContent value="importar" className="mt-4">
-            <ImportExtratoPanel comp={comp} onSaved={refresh} />
-          </TabsContent>
-        </Tabs>
+           <ImportExtratoPanel 
+            comp={comp} 
+            onSaved={refresh} 
+            cartoes={data?.cartoesRegistry ?? data?.cartoes ?? []} 
+            contas={data?.contas ?? []} 
+          />
+         </TabsContent>
+         </Tabs>
 
         <ConquistasPanel eventos={data.eventos} contratos={data.contratos} comp={comp} jurosTotais={jurosTotais} />
       </main>
