@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  Upload, FileText, CheckCircle2, AlertCircle, RefreshCw, 
-  Trash2, Plus, Edit2, Calendar, CreditCard, Building, Check, X, ArrowRight
-} from 'lucide-react';
+import { Upload, RefreshCw, Trash2, Check } from 'lucide-react';
 
 interface Transacao {
   id: string;
@@ -18,21 +15,26 @@ interface Transacao {
   status: 'pendente' | 'realizado';
 }
 
+interface ItemOpcao {
+  id: string;
+  nome: string;
+}
+
 export function ExtratoImport() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<Transacao[]>([]);
-  const [compDestino, setCompDestino] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+  const [compDestino, setCompDestino] = useState(new Date().toISOString().substring(0, 7));
   const [tipoDocumento, setTipoDocumento] = useState<'extrato' | 'fatura'>('extrato');
   
-  const [contas, setContas] = useState<any[]>([]);
-  const [cartoes, setCartoes] = useState<any[]>([]);
+  const [contas, setContas] = useState<ItemOpcao[]>([]);
+  const [cartoes, setCartoes] = useState<ItemOpcao[]>([]);
   const [contaPadrao, setContaPadrao] = useState<string>('');
   const [cartaoPadrao, setCartaoPadrao] = useState<string>('');
   
-  const [mensagem, setMensagem] = useState<{ tipo: 'sucesso' | 'erro', texto: string } | null>(null);
+  const [mensagem, setMensagem] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -48,12 +50,12 @@ export function ExtratoImport() {
       ]);
 
       if (resContas.data && resContas.data.length > 0) {
-        setContas(resContas.data);
+        setContas(resContas.data as ItemOpcao[]);
         setContaPadrao(resContas.data[0].id);
       }
 
       if (resCartoes.data && resCartoes.data.length > 0) {
-        setCartoes(resCartoes.data);
+        setCartoes(resCartoes.data as ItemOpcao[]);
         setCartaoPadrao(resCartoes.data[0].id);
       }
     } catch (err) {
@@ -101,7 +103,6 @@ export function ExtratoImport() {
         throw new Error(data.error || 'Erro ao processar o arquivo.');
       }
 
-      // Processa os dados retornados garantindo a vinculação ao cartão ou conta selecionados
       const transacoesFormatadas: Transacao[] = data.transacoes.map((item: any, index: number) => ({
         id: `temp-${index}-${Date.now()}`,
         data: item.data || new Date().toISOString().substring(0, 10),
@@ -116,8 +117,9 @@ export function ExtratoImport() {
 
       setRows(transacoesFormatadas);
       setMensagem({ tipo: 'sucesso', texto: `${transacoesFormatadas.length} transações extraídas com sucesso!` });
-    } catch (err: any) {
-      setMensagem({ tipo: 'erro', texto: err.message || 'Erro ao comunicar com o servidor.' });
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Erro ao comunicar com o servidor.';
+      setMensagem({ tipo: 'erro', texto: errorMsg });
     } finally {
       setLoading(false);
     }
@@ -137,7 +139,6 @@ export function ExtratoImport() {
 
     try {
       if (tipoDocumento === 'fatura') {
-        // Lançamentos de Cartão de Crédito
         const lancamentosCartao = rows.map(r => ({
           user_id: user?.id,
           cartao_id: r.cartao_id || cartaoPadrao,
@@ -152,7 +153,6 @@ export function ExtratoImport() {
         const { error } = await supabase.from('cartoes_lancamentos').insert(lancamentosCartao);
         if (error) throw error;
       } else {
-        // Lançamentos de Extrato Bancário (Receitas e Despesas)
         const despesas = rows
           .filter(r => r.tipo === 'despesa')
           .map(r => ({
@@ -191,8 +191,9 @@ export function ExtratoImport() {
       setMensagem({ tipo: 'sucesso', texto: 'Lançamentos salvos com sucesso!' });
       setRows([]);
       setFile(null);
-    } catch (err: any) {
-      setMensagem({ tipo: 'erro', texto: 'Erro ao salvar lançamentos: ' + err.message });
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Erro ao salvar lançamentos.';
+      setMensagem({ tipo: 'erro', texto: 'Erro ao salvar lançamentos: ' + errorMsg });
     } finally {
       setSaving(false);
     }
@@ -210,7 +211,6 @@ export function ExtratoImport() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {/* Seleção do Tipo de Documento */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Documento</label>
             <select 
@@ -223,7 +223,6 @@ export function ExtratoImport() {
             </select>
           </div>
 
-          {/* Competência / Mês */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Competência (Mês/Ano)</label>
             <input 
@@ -234,7 +233,6 @@ export function ExtratoImport() {
             />
           </div>
 
-          {/* Seleção de Conta ou Cartão de Destino */}
           {tipoDocumento === 'extrato' ? (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Conta Bancária Destino</label>
@@ -265,7 +263,6 @@ export function ExtratoImport() {
           )}
         </div>
 
-        {/* Input de Upload de Ficheiro */}
         <div className="flex items-center space-x-4 mb-4">
           <input 
             type="file" 
@@ -284,7 +281,6 @@ export function ExtratoImport() {
         </div>
       </div>
 
-      {/* Tabela de Revisão e Confirmação das Transações Extraídas */}
       {rows.length > 0 && (
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 space-y-4">
           <div className="flex justify-between items-center">
@@ -344,7 +340,7 @@ export function ExtratoImport() {
                         value={row.tipo} 
                         onChange={(e) => handleUpdateRow(row.id, 'tipo', e.target.value)}
                         className="border rounded p-1 text-xs"
-                        disabled={tipoDocumento === 'fatura'} // Fatura de cartão é sempre despesa
+                        disabled={tipoDocumento === 'fatura'}
                       >
                         <option value="despesa">Despesa</option>
                         <option value="receita">Receita</option>
