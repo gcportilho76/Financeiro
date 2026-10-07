@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { BRL, hojeISO, competenciaAtual, formatCompetencia, proxCompetencia } from "@/lib/finance";
+import { BRL, hojeISO, competenciaAtual, formatCompetencia } from "@/lib/finance";
 
 type ExtractedItem = {
   data: string;
@@ -60,7 +60,6 @@ const CATEGORIAS = [
 function gerarMesesDisponiveis(compAtual: string) {
   const meses: { value: string; label: string }[] = [];
   const [anoAtual, mesAtual] = compAtual.split("-").map(Number);
-  // 3 meses atrás até 3 meses à frente
   for (let i = -3; i <= 3; i++) {
     const d = new Date(anoAtual, mesAtual - 1 + i, 1);
     const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
@@ -90,6 +89,7 @@ export function ImportExtratoPanel({
   const [contas, setContas] = useState<any[]>([]);
   const [contaPadrao, setContaPadrao] = useState<string>("");
   const [compDestino, setCompDestino] = useState<string>(comp);
+
   useEffect(() => { setCompDestino(comp); }, [comp]);
 
   async function loadCartoes() {
@@ -99,11 +99,19 @@ export function ImportExtratoPanel({
   }
 
   async function loadContas() {
-    const { data } = await (supabase.from as any)("contas").select("*").eq("ativa", true).order("nome");
-    setContas(data ?? []);
-    if (data && data.length > 0) {
-      const folha = data.find((c: any) => c.nome.toLowerCase().includes("folha"));
-      setContaPadrao(folha ? folha.id : data[0].id);
+    // Busca todas as contas do usuário (removida a trava de eq("ativa", true))
+    const { data, error } = await (supabase.from as any)("contas").select("*");
+    if (error) {
+      console.error("Erro ao carregar contas:", error);
+      return;
+    }
+    const listaContas = data ?? [];
+    setContas(listaContas);
+
+    if (listaContas.length > 0) {
+      const folha = listaContas.find((c: any) => (c.nome || c.descricao || "").toLowerCase().includes("folha"));
+      const idPadrao = folha ? folha.id : listaContas[0].id;
+      setContaPadrao(idPadrao);
     }
   }
 
@@ -374,11 +382,11 @@ export function ImportExtratoPanel({
                 setRows((prev) => prev.map((r) => ({ ...r, _contaId: v })));
               }}>
                 <SelectTrigger className="h-8 w-48 text-xs">
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione a conta" />
                 </SelectTrigger>
                 <SelectContent>
                   {contas.map((c: any) => (
-                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>{c.nome || c.descricao || "Conta sem nome"}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -573,15 +581,16 @@ export function ImportExtratoPanel({
                           </td>
                           <td className="p-2">
                             <Select
-                              value={r._contaId || ""}
-                              onValueChange={(v) => updateRow(r._id, { _contaId: v })}
+                              value={r._contaId || "none"}
+                              onValueChange={(v) => updateRow(r._id, { _contaId: v === "none" ? "" : v })}
                             >
                               <SelectTrigger className="h-8 w-36 text-xs">
                                 <SelectValue placeholder="A definir" />
                               </SelectTrigger>
                               <SelectContent>
+                                <SelectItem value="none">A definir</SelectItem>
                                 {contas.map((c: any) => (
-                                  <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                                  <SelectItem key={c.id} value={c.id}>{c.nome || c.descricao || "Conta sem nome"}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -644,7 +653,7 @@ export function ImportExtratoPanel({
                         </td>
                         <td className="p-2 text-right tabular text-sm" colSpan={2}>
                           <span className="text-success">+{BRL(totalRec)}</span>
-                          {"  "}
+                          {" "}
                           <span className="text-warning">-{BRL(totalDesp)}</span>
                         </td>
                       </tr>
