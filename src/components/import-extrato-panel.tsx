@@ -1,718 +1,378 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Upload, FileText, Loader as Loader2, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Trash2, Save, RefreshCw, Calendar, Landmark } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { toast } from "sonner";
-import { BRL, hojeISO, competenciaAtual, formatCompetencia } from "@/lib/finance";
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { 
+  Upload, FileText, CheckCircle2, AlertCircle, RefreshCw, 
+  Trash2, Plus, Edit2, Calendar, CreditCard, Building, Check, X, ArrowRight
+} from 'lucide-react';
 
-type ExtractedItem = {
+interface Transacao {
+  id: string;
   data: string;
   descricao: string;
   valor: number;
-  tipo: "receita" | "despesa";
+  tipo: 'receita' | 'despesa';
   categoria: string;
-};
-
-type RowItem = ExtractedItem & {
-  _id: string;
-  _selected: boolean;
-  _status: "PREVISTO" | "RECEBIDO" | "PAGO" | "PENDENTE";
-  _cartao: string;
-  _contaId: string;
-};
-
-const CATEGORIAS = [
-  "Habitação",
-  "Alimentação",
-  "Transporte",
-  "Educação",
-  "Saúde",
-  "Lazer",
-  "Cartão",
-  "Salário",
-  "Freelance",
-  "Investimentos",
-  "Amortização",
-  "Consignado",
-  "Outros",
-];
-
-function gerarMesesDisponiveis(compAtual: string) {
-  const meses: { value: string; label: string }[] = [];
-  const [anoAtual, mesAtual] = compAtual.split("-").map(Number);
-  for (let i = -3; i <= 3; i++) {
-    const d = new Date(anoAtual, mesAtual - 1 + i, 1);
-    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-    meses.push({ value, label: formatCompetencia(value) });
-  }
-  return meses;
+  cartao_id?: string;
+  conta_id?: string;
+  status: 'pendente' | 'realizado';
 }
-const MESES_DISPONIVEIS = gerarMesesDisponiveis(competenciaAtual());
 
-export function ImportExtratoPanel({
-  comp,
-  onSaved,
-}: {
-  comp: string;
-  onSaved: () => void;
-}) {
-  const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
+export function ExtratoImport() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [rows, setRows] = useState<RowItem[]>([]);
   const [saving, setSaving] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [cartoesRegistry, setCartoesRegistry] = useState<any[]>([]);
-  const [cartaoPadrao, setCartaoPadrao] = useState<string>("");
+  const [file, setFile] = useState<File | null>(null);
+  const [rows, setRows] = useState<Transacao[]>([]);
+  const [compDestino, setCompDestino] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+  const [tipoDocumento, setTipoDocumento] = useState<'extrato' | 'fatura'>('extrato');
+  
   const [contas, setContas] = useState<any[]>([]);
-  const [contaPadrao, setContaPadrao] = useState<string>("");
-  const [compDestino, setCompDestino] = useState<string>(comp);
+  const [cartoes, setCartoes] = useState<any[]>([]);
+  const [contaPadrao, setContaPadrao] = useState<string>('');
+  const [cartaoPadrao, setCartaoPadrao] = useState<string>('');
+  
+  const [mensagem, setMensagem] = useState<{ tipo: 'sucesso' | 'erro', texto: string } | null>(null);
 
-  useEffect(() => { setCompDestino(comp); }, [comp]);
-
-  async function loadCartoes() {
-    const { data } = await (supabase.from as any)("cartoes_registry").select("*").order("nome");
-    setCartoesRegistry(data ?? []);
-    if (data && data.length > 0 && !cartaoPadrao) setCartaoPadrao(data[0].nome);
-  }
-
-  async function loadContas() {
-    // Busca todas as contas do usuário (removida a trava de eq("ativa", true))
-    const { data, error } = await (supabase.from as any)("contas").select("*");
-    if (error) {
-      console.error("Erro ao carregar contas:", error);
-      return;
+  useEffect(() => {
+    if (user) {
+      carregarContasECartoes();
     }
-    const listaContas = data ?? [];
-    setContas(listaContas);
+  }, [user]);
 
-    if (listaContas.length > 0) {
-      const folha = listaContas.find((c: any) => (c.nome || c.descricao || "").toLowerCase().includes("folha"));
-      const idPadrao = folha ? folha.id : listaContas[0].id;
-      setContaPadrao(idPadrao);
-    }
-  }
-
-  const reset = useCallback(() => {
-    setFile(null);
-    setRows([]);
-  }, []);
-
-  const handleFile = useCallback((f: File) => {
-    const allowed = [
-      "application/pdf",
-      "image/png",
-      "image/jpeg",
-      "image/webp",
-      "image/gif",
-    ];
-    if (!allowed.includes(f.type)) {
-      toast.error("Formato não suportado. Use PDF, PNG, JPG ou WEBP.");
-      return;
-    }
-    if (f.size > 15 * 1024 * 1024) {
-      toast.error("Arquivo muito grande (máximo 15 MB).");
-      return;
-    }
-    setFile(f);
-    setRows([]);
-  }, []);
-
-  async function extrair() {
-    if (!file) return;
-    setLoading(true);
-    setRows([]);
+  const carregarContasECartoes = async () => {
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session.session?.access_token;
-      if (!token) {
-        toast.error("Sessão expirada. Faça login novamente.");
-        return;
+      const [resContas, resCartoes] = await Promise.all([
+        supabase.from('contas_bancarias').select('id, nome').eq('user_id', user?.id),
+        supabase.from('cartoes_credito').select('id, nome').eq('user_id', user?.id)
+      ]);
+
+      if (resContas.data && resContas.data.length > 0) {
+        setContas(resContas.data);
+        setContaPadrao(resContas.data[0].id);
       }
 
-      const formData = new FormData();
-      formData.append("file", file);
+      if (resCartoes.data && resCartoes.data.length > 0) {
+        setCartoes(resCartoes.data);
+        setCartaoPadrao(resCartoes.data[0].id);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar contas e cartões:', err);
+    }
+  };
 
-      const res = await fetch("/api/import-extrato", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const processarArquivo = async () => {
+    if (!file) {
+      setMensagem({ tipo: 'erro', texto: 'Selecione um arquivo para importar.' });
+      return;
+    }
+
+    if (tipoDocumento === 'fatura' && !cartaoPadrao) {
+      setMensagem({ tipo: 'erro', texto: 'Selecione um cartão de crédito de destino para a fatura.' });
+      return;
+    }
+
+    setLoading(true);
+    setMensagem(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('tipoDocumento', tipoDocumento);
+      formData.append('competencia', compDestino);
+      if (tipoDocumento === 'fatura') {
+        formData.append('cartaoId', cartaoPadrao);
+      }
+
+      const response = await fetch('/api/import-extrato', {
+        method: 'POST',
         body: formData,
       });
 
-      const json = await res.json();
-      if (!res.ok) {
-        toast.error(json.error ?? "Erro ao processar o documento.");
-        return;
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao processar o arquivo.');
       }
 
-      const itens: ExtractedItem[] = json.itens ?? [];
-      if (itens.length === 0) {
-        toast.error("A IA não encontrou transações no documento.");
-        return;
-      }
-
-      const newRows: RowItem[] = itens.map((item, i) => ({
-        ...item,
-        _id: `${Date.now()}-${i}`,
-        _selected: true,
-        _status: item.tipo === "receita" ? "RECEBIDO" : "PAGO",
-        _cartao: item.categoria === "Cartão" ? cartaoPadrao : "",
-        _contaId: contaPadrao,
+      // Processa os dados retornados garantindo a vinculação ao cartão ou conta selecionados
+      const transacoesFormatadas: Transacao[] = data.transacoes.map((item: any, index: number) => ({
+        id: `temp-${index}-${Date.now()}`,
+        data: item.data || new Date().toISOString().substring(0, 10),
+        descricao: item.descricao || 'Sem descrição',
+        valor: Math.abs(Number(item.valor) || 0),
+        tipo: tipoDocumento === 'fatura' ? 'despesa' : (item.tipo || (item.valor < 0 ? 'despesa' : 'receita')),
+        categoria: item.categoria || 'Outros',
+        cartao_id: tipoDocumento === 'fatura' ? cartaoPadrao : item.cartao_id,
+        conta_id: tipoDocumento === 'extrato' ? contaPadrao : undefined,
+        status: 'pendente'
       }));
 
-      setRows(newRows);
-      toast.success(`${itens.length} transação(ões) encontrada(s). Revise antes de salvar.`);
-    } catch (e: any) {
-      toast.error(e.message ?? "Erro de conexão com o servidor.");
+      setRows(transacoesFormatadas);
+      setMensagem({ tipo: 'sucesso', texto: `${transacoesFormatadas.length} transações extraídas com sucesso!` });
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: err.message || 'Erro ao comunicar com o servidor.' });
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function salvar() {
-    const selecionados = rows.filter((r) => r._selected);
-    if (selecionados.length === 0) {
-      toast.error("Selecione ao menos uma transação para salvar.");
-      return;
-    }
+  const handleUpdateRow = (id: string, field: keyof Transacao, value: any) => {
+    setRows(rows.map(row => row.id === id ? { ...row, [field]: value } : row));
+  };
 
+  const handleRemoveRow = (id: string) => {
+    setRows(rows.filter(row => row.id !== id));
+  };
+
+  const salvarTransacoes = async () => {
+    if (rows.length === 0) return;
     setSaving(true);
+
     try {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) {
-        toast.error("Sessão expirada.");
-        return;
-      }
-      const uid = u.user.id;
+      if (tipoDocumento === 'fatura') {
+        // Lançamentos de Cartão de Crédito
+        const lancamentosCartao = rows.map(r => ({
+          user_id: user?.id,
+          cartao_id: r.cartao_id || cartaoPadrao,
+          data: r.data,
+          descricao: r.descricao,
+          valor: r.valor,
+          categoria: r.categoria,
+          competencia: compDestino,
+          status: r.status
+        }));
 
-      const receitas: any[] = [];
-      const despesas: any[] = [];
-      const cartoesLanc: any[] = [];
-
-      for (const r of selecionados) {
-        const dataLanc = r.data && r.data.length === 10 ? r.data : hojeISO();
-        if (r.tipo === "receita") {
-          receitas.push({
-            user_id: uid,
-            competencia: compDestino,
-            data: dataLanc,
+        const { error } = await supabase.from('cartoes_lancamentos').insert(lancamentosCartao);
+        if (error) throw error;
+      } else {
+        // Lançamentos de Extrato Bancário (Receitas e Despesas)
+        const despesas = rows
+          .filter(r => r.tipo === 'despesa')
+          .map(r => ({
+            user_id: user?.id,
+            conta_id: r.conta_id || contaPadrao,
+            data: r.data,
             descricao: r.descricao,
-            categoria: r.categoria || "Outros",
             valor: r.valor,
-            status: r._status === "RECEBIDO" ? "RECEBIDO" : "PREVISTO",
-            status_conciliacao: r._contaId ? "CONCILIADO" : "NAO_CONCILIADO",
-            conta_id: r._contaId || null,
-          });
-        } else if (r.categoria === "Cartão" && r._cartao) {
-          cartoesLanc.push({
-            user_id: uid,
-            competencia: compDestino,
-            cartao: r._cartao,
-            descricao: r.descricao,
             categoria: r.categoria,
-            valor: r.valor,
-            data_compra: dataLanc,
-            status: r._status === "PAGO" ? "PAGO" : "PENDENTE",
-            fatura: "atual",
-            ativo: true,
-            status_conciliacao: r._contaId ? "CONCILIADO" : "NAO_CONCILIADO",
-          });
-        } else {
-          const eConsignado = r.categoria === "Consignado";
-          despesas.push({
-            user_id: uid,
-            competencia: compDestino,
-            data_venc: dataLanc,
+            status: r.status
+          }));
+
+        const receitas = rows
+          .filter(r => r.tipo === 'receita')
+          .map(r => ({
+            user_id: user?.id,
+            conta_id: r.conta_id || contaPadrao,
+            data: r.data,
             descricao: r.descricao,
-            categoria: r.categoria || "Outros",
             valor: r.valor,
-            status: "PAGO",
-            tipo: eConsignado ? "consignado" : "variavel",
-            recorrente: false,
-            status_conciliacao: r._contaId ? "CONCILIADO" : "NAO_CONCILIADO",
-            conta_id: r._contaId || null,
-          });
+            categoria: r.categoria,
+            status: r.status
+          }));
+
+        if (despesas.length > 0) {
+          const { error } = await supabase.from('despesas').insert(despesas);
+          if (error) throw error;
+        }
+
+        if (receitas.length > 0) {
+          const { error } = await supabase.from('receitas').insert(receitas);
+          if (error) throw error;
         }
       }
 
-      let erroMsg: string | null = null;
-
-      if (receitas.length) {
-        const { error } = await supabase.from("receitas").insert(receitas);
-        if (error) erroMsg = error.message;
-      }
-      if (!erroMsg && despesas.length) {
-        const { error } = await supabase.from("despesas").insert(despesas);
-        if (error) erroMsg = error.message;
-      }
-      if (!erroMsg && cartoesLanc.length) {
-        const { error } = await supabase.from("cartoes_lancamentos").insert(cartoesLanc);
-        if (error) erroMsg = error.message;
-      }
-
-      if (erroMsg) {
-        toast.error(erroMsg);
-      } else {
-        const totalRec = receitas.reduce((s, r) => s + r.valor, 0);
-        const totalDesp = despesas.reduce((s, d) => s + d.valor, 0);
-        const totalCart = cartoesLanc.reduce((s, c) => s + c.valor, 0);
-        toast.success(
-          `${receitas.length} receita(s) (${BRL(totalRec)}), ${despesas.length} despesa(s) (${BRL(
-            totalDesp,
-          )})${cartoesLanc.length > 0 ? ` e ${cartoesLanc.length} lançamento(s) de cartão (${BRL(totalCart)})` : ""} importados.`,
-        );
-        qc.invalidateQueries({ queryKey: ["fin"] });
-        reset();
-        setOpen(false);
-        onSaved();
-      }
-    } catch (e: any) {
-      toast.error(e.message ?? "Erro ao salvar.");
+      setMensagem({ tipo: 'sucesso', texto: 'Lançamentos salvos com sucesso!' });
+      setRows([]);
+      setFile(null);
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: 'Erro ao salvar lançamentos: ' + err.message });
     } finally {
       setSaving(false);
     }
-  }
-
-  function updateRow(id: string, patch: Partial<RowItem>) {
-    setRows((prev) => prev.map((r) => (r._id === id ? { ...r, ...patch } : r)));
-  }
-
-  function toggleAll(on: boolean) {
-    setRows((prev) => prev.map((r) => ({ ...r, _selected: on })));
-  }
-
-  function removeRow(id: string) {
-    setRows((prev) => prev.filter((r) => r._id !== id));
-  }
-
-  const selecionados = rows.filter((r) => r._selected);
-  const totalRec = selecionados
-    .filter((r) => r.tipo === "receita")
-    .reduce((s, r) => s + r.valor, 0);
-  const totalDesp = selecionados
-    .filter((r) => r.tipo === "despesa")
-    .reduce((s, r) => s + r.valor, 0);
+  };
 
   return (
-    <>
-      <Card className="p-5 bg-card border-border">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h3 className="font-semibold flex items-center gap-2">
-                <FileText className="w-5 h-5 text-primary" />
-                Importar Extrato/Fatura com IA
-              </h3>
-              <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-                Envie um PDF ou foto do extrato bancário ou fatura de cartão. A IA
-                lê o documento, extrai data, descrição, valor e tipo, e você
-                revisa antes de salvar nos seus lançamentos.
-              </p>
-            </div>
-            <Button onClick={() => setOpen(true)}>
-              <Upload className="w-4 h-4 mr-1" />
-              Enviar documento
-            </Button>
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <h2 className="text-xl font-semibold mb-4">Importar Extrato / Fatura</h2>
+        
+        {mensagem && (
+          <div className={`p-4 mb-4 rounded-md ${mensagem.tipo === 'sucesso' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+            {mensagem.texto}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {/* Seleção do Tipo de Documento */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Documento</label>
+            <select 
+              value={tipoDocumento} 
+              onChange={(e) => setTipoDocumento(e.target.value as 'extrato' | 'fatura')}
+              className="w-full border border-gray-300 rounded-md p-2"
+            >
+              <option value="extrato">Extrato Bancário</option>
+              <option value="fatura">Fatura de Cartão de Crédito</option>
+            </select>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="rounded-lg border border-border p-4">
-              <div className="text-xs uppercase text-muted-foreground">Formatos</div>
-              <div className="text-sm font-medium mt-1">PDF, PNG, JPG, WEBP</div>
+          {/* Competência / Mês */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Competência (Mês/Ano)</label>
+            <input 
+              type="month" 
+              value={compDestino} 
+              onChange={(e) => setCompDestino(e.target.value)}
+              className="w-full border border-gray-300 rounded-md p-2"
+            />
+          </div>
+
+          {/* Seleção de Conta ou Cartão de Destino */}
+          {tipoDocumento === 'extrato' ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Conta Bancária Destino</label>
+              <select 
+                value={contaPadrao} 
+                onChange={(e) => setContaPadrao(e.target.value)}
+                className="w-full border border-gray-300 rounded-md p-2"
+              >
+                {contas.map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
             </div>
-            <div className="rounded-lg border border-border p-4">
-              <div className="text-xs uppercase text-muted-foreground">Tamanho máx.</div>
-              <div className="text-sm font-medium mt-1">15 MB</div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cartão de Crédito Destino</label>
+              <select 
+                value={cartaoPadrao} 
+                onChange={(e) => setCartaoPadrao(e.target.value)}
+                className="w-full border border-gray-300 rounded-md p-2"
+              >
+                <option value="">Selecione o cartão...</option>
+                {cartoes.map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
             </div>
-            <div className="rounded-lg border border-border p-4">
-              <div className="text-xs uppercase text-muted-foreground">IA usada</div>
-              <div className="text-sm font-medium mt-1">GPT-4o (visão)</div>
-            </div>
+          )}
+        </div>
+
+        {/* Input de Upload de Ficheiro */}
+        <div className="flex items-center space-x-4 mb-4">
+          <input 
+            type="file" 
+            accept="application/pdf,image/*" 
+            onChange={handleFileChange}
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+          />
+          <button
+            onClick={processarArquivo}
+            disabled={loading || !file}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
+          >
+            {loading ? <RefreshCw className="animate-spin h-5 w-5" /> : <Upload className="h-5 w-5" />}
+            <span>Processar</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Tabela de Revisão e Confirmação das Transações Extraídas */}
+      {rows.length > 0 && (
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-semibold">Transações Identificadas ({rows.length})</h3>
+            <button
+              onClick={salvarTransacoes}
+              disabled={saving}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center space-x-2"
+            >
+              {saving ? <RefreshCw className="animate-spin h-5 w-5" /> : <Check className="h-5 w-5" />}
+              <span>Salvar Lançamentos</span>
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="p-2">Data</th>
+                  <th className="p-2">Descrição</th>
+                  <th className="p-2">Valor (R$)</th>
+                  <th className="p-2">Tipo</th>
+                  <th className="p-2">Categoria</th>
+                  <th className="p-2">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-b hover:bg-gray-50">
+                    <td className="p-2">
+                      <input 
+                        type="date" 
+                        value={row.data} 
+                        onChange={(e) => handleUpdateRow(row.id, 'data', e.target.value)}
+                        className="border rounded p-1 text-xs"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input 
+                        type="text" 
+                        value={row.descricao} 
+                        onChange={(e) => handleUpdateRow(row.id, 'descricao', e.target.value)}
+                        className="border rounded p-1 text-xs w-full"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        value={row.valor} 
+                        onChange={(e) => handleUpdateRow(row.id, 'valor', Number(e.target.value))}
+                        className="border rounded p-1 text-xs w-24"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <select 
+                        value={row.tipo} 
+                        onChange={(e) => handleUpdateRow(row.id, 'tipo', e.target.value)}
+                        className="border rounded p-1 text-xs"
+                        disabled={tipoDocumento === 'fatura'} // Fatura de cartão é sempre despesa
+                      >
+                        <option value="despesa">Despesa</option>
+                        <option value="receita">Receita</option>
+                      </select>
+                    </td>
+                    <td className="p-2">
+                      <input 
+                        type="text" 
+                        value={row.categoria} 
+                        onChange={(e) => handleUpdateRow(row.id, 'categoria', e.target.value)}
+                        className="border rounded p-1 text-xs"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <button 
+                        onClick={() => handleRemoveRow(row.id)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      </Card>
-
-      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); if (o) { loadCartoes(); loadContas(); } }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Importar Extrato/Fatura com IA</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Seletor de mês e conta de destino */}
-            <div className="flex flex-wrap items-center gap-2 p-3 rounded-md bg-info/10 border border-info/30 text-sm">
-              <Calendar className="w-4 h-4 text-info shrink-0" />
-              <span className="text-muted-foreground">Mês:</span>
-              <Select value={compDestino} onValueChange={setCompDestino}>
-                <SelectTrigger className="h-8 w-44 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MESES_DISPONIVEIS.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Landmark className="w-4 h-4 text-info shrink-0 ml-2" />
-              <span className="text-muted-foreground">Conta:</span>
-              <Select value={contaPadrao} onValueChange={(v) => {
-                setContaPadrao(v);
-                setRows((prev) => prev.map((r) => ({ ...r, _contaId: v })));
-              }}>
-                <SelectTrigger className="h-8 w-48 text-xs">
-                  <SelectValue placeholder="Selecione a conta" />
-                </SelectTrigger>
-                <SelectContent>
-                  {contas.map((c: any) => (
-                    <SelectItem key={c.id} value={c.id}>{c.nome || c.descricao || "Conta sem nome"}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span className="text-xs text-muted-foreground">Lançamentos conciliados nesta conta.</span>
-            </div>
-
-            {/* Upload area */}
-            <div
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                const f = e.dataTransfer.files?.[0];
-                if (f) handleFile(f);
-              }}
-              className={`rounded-lg border-2 border-dashed p-8 text-center transition-colors cursor-pointer ${
-                dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-              }`}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf,image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleFile(f);
-                }}
-              />
-              {file ? (
-                <div className="flex flex-col items-center gap-2">
-                  <FileText className="w-10 h-10 text-primary" />
-                  <div className="font-medium text-sm">{file.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {(file.size / 1024).toFixed(0)} KB · {file.type}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <Upload className="w-10 h-10 text-muted-foreground" />
-                  <div className="font-medium text-sm">
-                    Arraste um arquivo ou clique para selecionar
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    PDF, PNG, JPG ou WEBP — até 15 MB
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {file && rows.length === 0 && (
-              <div className="flex justify-center gap-2">
-                <Button onClick={extrair} disabled={loading}>
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                      Lendo documento...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-1" />
-                      Extrair transações
-                    </>
-                  )}
-                </Button>
-                <Button variant="outline" onClick={() => setFile(null)} disabled={loading}>
-                  Trocar arquivo
-                </Button>
-              </div>
-            )}
-
-            {rows.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="text-sm font-medium">
-                    {rows.length} transação(ões) encontrada(s) — revise e selecione
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {cartoesRegistry.length > 0 && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <span>Cartão padrão:</span>
-                        <Select value={cartaoPadrao} onValueChange={setCartaoPadrao}>
-                          <SelectTrigger className="h-7 w-40 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {cartoesRegistry.map((cr: any) => (
-                              <SelectItem key={cr.id} value={cr.nome}>{cr.nome}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                    <Button size="sm" variant="outline" onClick={() => toggleAll(true)}>
-                      Selecionar todas
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => toggleAll(false)}>
-                      Limpar seleção
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                      <tr>
-                        <th className="p-2 w-8"></th>
-                        <th className="p-2 text-left">Data</th>
-                        <th className="p-2 text-left">Descrição</th>
-                        <th className="p-2 text-left">Tipo</th>
-                        <th className="p-2 text-left">Categoria</th>
-                        <th className="p-2 text-left">Cartão</th>
-                        <th className="p-2 text-left">Conta</th>
-                        <th className="p-2 text-left">Status</th>
-                        <th className="p-2 text-right">Valor</th>
-                        <th className="p-2 w-8"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r) => (
-                        <tr key={r._id} className="border-t border-border">
-                          <td className="p-2">
-                            <Checkbox
-                              checked={r._selected}
-                              onCheckedChange={(v) => updateRow(r._id, { _selected: !!v })}
-                            />
-                          </td>
-                          <td className="p-2">
-                            <Input
-                              type="date"
-                              value={r.data}
-                              onChange={(e) => updateRow(r._id, { data: e.target.value })}
-                              className="h-8 w-36 text-xs"
-                            />
-                          </td>
-                          <td className="p-2">
-                            <Input
-                              value={r.descricao}
-                              onChange={(e) => updateRow(r._id, { descricao: e.target.value })}
-                              className="h-8 text-xs"
-                            />
-                          </td>
-                          <td className="p-2">
-                            <Badge
-                              variant={r.tipo === "receita" ? "secondary" : "outline"}
-                              className={
-                                r.tipo === "receita"
-                                  ? "bg-success/15 text-success border-success/30"
-                                  : "bg-warning/15 text-warning border-warning/30"
-                              }
-                            >
-                              {r.tipo}
-                            </Badge>
-                          </td>
-                          <td className="p-2">
-                            <Select
-                              value={r.categoria}
-                              onValueChange={(v) => updateRow(r._id, { categoria: v, _cartao: v === "Cartão" ? (r._cartao || cartaoPadrao) : "" })}
-                            >
-                              <SelectTrigger className="h-8 w-36 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {CATEGORIAS.map((c) => (
-                                  <SelectItem key={c} value={c}>
-                                    {c}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          <td className="p-2">
-                            {r.categoria === "Cartão" ? (
-                              <Select
-                                value={r._cartao || cartaoPadrao}
-                                onValueChange={(v) => updateRow(r._id, { _cartao: v })}
-                              >
-                                <SelectTrigger className="h-8 w-36 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {cartoesRegistry.map((cr: any) => (
-                                    <SelectItem key={cr.id} value={cr.nome}>{cr.nome}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="p-2">
-                            <Select
-                              value={r._contaId || "none"}
-                              onValueChange={(v) => updateRow(r._id, { _contaId: v === "none" ? "" : v })}
-                            >
-                              <SelectTrigger className="h-8 w-36 text-xs">
-                                <SelectValue placeholder="A definir" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">A definir</SelectItem>
-                                {contas.map((c: any) => (
-                                  <SelectItem key={c.id} value={c.id}>{c.nome || c.descricao || "Conta sem nome"}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          <td className="p-2">
-                            <Select
-                              value={r._status}
-                              onValueChange={(v) =>
-                                updateRow(r._id, { _status: v as RowItem["_status"] })
-                              }
-                            >
-                              <SelectTrigger className="h-8 w-32 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {r.tipo === "receita" ? (
-                                  <>
-                                    <SelectItem value="PREVISTO">PREVISTO</SelectItem>
-                                    <SelectItem value="RECEBIDO">RECEBIDO</SelectItem>
-                                  </>
-                                ) : (
-                                  <>
-                                    <SelectItem value="PENDENTE">PENDENTE</SelectItem>
-                                    <SelectItem value="PAGO">PAGO</SelectItem>
-                                  </>
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          <td className="p-2 text-right">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={r.valor}
-                              onChange={(e) =>
-                                updateRow(r._id, { valor: Number(e.target.value) || 0 })
-                              }
-                              className={`h-8 w-24 text-xs text-right tabular ${
-                                r.tipo === "receita" ? "text-success" : "text-warning"
-                              }`}
-                            />
-                          </td>
-                          <td className="p-2">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => removeRow(r._id)}
-                            >
-                              <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-muted/30 font-medium">
-                        <td colSpan={8} className="p-2 text-right text-xs">
-                          Selecionadas ({selecionados.length}):
-                        </td>
-                        <td className="p-2 text-right tabular text-sm" colSpan={2}>
-                          <span className="text-success">+{BRL(totalRec)}</span>
-                          {" "}
-                          <span className="text-warning">-{BRL(totalDesp)}</span>
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-
-                <div className="flex items-center justify-between gap-2">
-                  <Button variant="outline" onClick={() => { reset(); }} disabled={saving}>
-                    <RefreshCw className="w-4 h-4 mr-1" />
-                    Recomeçar
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    {selecionados.length > 0 && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-success" />
-                        {selecionados.length} prontas para salvar em {compDestino.slice(0, 7)}
-                      </div>
-                    )}
-                    <Button onClick={salvar} disabled={saving || selecionados.length === 0}>
-                      {saving ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                          Salvando...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="w-4 h-4 mr-1" />
-                          Salvar {selecionados.length} lançamento(s)
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {rows.length === 0 && !file && (
-              <div className="flex items-start gap-2 p-3 rounded-md bg-info/10 border border-info/30 text-xs text-muted-foreground">
-                <AlertTriangle className="w-4 h-4 text-info shrink-0 mt-0.5" />
-                <div>
-                  <strong>Dica:</strong> para melhor precisão, use extratos em PDF
-                  gerados pelo app do banco ou fotos nítidas e bem iluminadas da
-                  tela/fatura impressa. A IA pode cometer erros — sempre revise os
-                  dados antes de salvar.
-                </div>
-              </div>
-            )}
-          </div>
-
-          {rows.length === 0 && (
-            <DialogFooter>
-              <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>
-                Cancelar
-              </Button>
-            </DialogFooter>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+      )}
+    </div>
   );
 }
