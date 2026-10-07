@@ -20,13 +20,22 @@ interface ItemOpcao {
   nome: string;
 }
 
+interface ApiTransacaoItem {
+  data?: string;
+  descricao?: string;
+  valor?: number | string;
+  tipo?: 'receita' | 'despesa';
+  categoria?: string;
+  cartao_id?: string;
+}
+
 export function ExtratoImport() {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
   const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<Transacao[]>([]);
-  const [compDestino, setCompDestino] = useState(new Date().toISOString().substring(0, 7));
+  const [compDestino, setCompDestino] = useState<string>(new Date().toISOString().substring(0, 7));
   const [tipoDocumento, setTipoDocumento] = useState<'extrato' | 'fatura'>('extrato');
   
   const [contas, setContas] = useState<ItemOpcao[]>([]);
@@ -103,12 +112,12 @@ export function ExtratoImport() {
         throw new Error(data.error || 'Erro ao processar o arquivo.');
       }
 
-      const transacoesFormatadas: Transacao[] = data.transacoes.map((item: any, index: number) => ({
+      const transacoesFormatadas: Transacao[] = (data.transacoes || []).map((item: ApiTransacaoItem, index: number) => ({
         id: `temp-${index}-${Date.now()}`,
         data: item.data || new Date().toISOString().substring(0, 10),
         descricao: item.descricao || 'Sem descrição',
         valor: Math.abs(Number(item.valor) || 0),
-        tipo: tipoDocumento === 'fatura' ? 'despesa' : (item.tipo || (item.valor < 0 ? 'despesa' : 'receita')),
+        tipo: tipoDocumento === 'fatura' ? 'despesa' : (item.tipo || (Number(item.valor) < 0 ? 'despesa' : 'receita')),
         categoria: item.categoria || 'Outros',
         cartao_id: tipoDocumento === 'fatura' ? cartaoPadrao : item.cartao_id,
         conta_id: tipoDocumento === 'extrato' ? contaPadrao : undefined,
@@ -125,7 +134,7 @@ export function ExtratoImport() {
     }
   };
 
-  const handleUpdateRow = (id: string, field: keyof Transacao, value: any) => {
+  const handleUpdateRow = (id: string, field: keyof Transacao, value: string | number) => {
     setRows(rows.map(row => row.id === id ? { ...row, [field]: value } : row));
   };
 
@@ -338,7 +347,7 @@ export function ExtratoImport() {
                     <td className="p-2">
                       <select 
                         value={row.tipo} 
-                        onChange={(e) => handleUpdateRow(row.id, 'tipo', e.target.value)}
+                        onChange={(e) => handleUpdateRow(row.id, 'tipo', e.target.value as 'receita' | 'despesa')}
                         className="border rounded p-1 text-xs"
                         disabled={tipoDocumento === 'fatura'}
                       >
