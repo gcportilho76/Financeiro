@@ -99,19 +99,17 @@ export const Route = createFileRoute("/api/import-extrato")({
           }
 
           // ─── Safe SDK Call ──────────────────────────────────
-          let responseText = "";
+         let responseText = "";
           try {
             const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
             const { generateText } = await import("ai");
 
             const google = createGoogleGenerativeAI({ apiKey: geminiKey });
 
-            // Tenta cada modelo em sequência caso algum falhe por cota ou indisponibilidade
+            // Modelos 100% suportados no generateContent
             const modelsToTry = [
               "gemini-1.5-flash",
-              "gemini-1.5-pro",
-              "gemini-2.0-flash-exp",
-              "gemini-1.5-flash-8b"
+              "gemini-1.5-pro"
             ];
 
             let lastError: any = null;
@@ -122,13 +120,13 @@ export const Route = createFileRoute("/api/import-extrato")({
                   model: google(modelName),
                   system: SYSTEM_PROMPT,
                   messages: [{ role: "user", content: userContent }],
-                  maxRetries: 1,
+                  maxRetries: 2,
                 });
                 responseText = result.text.trim();
-                if (responseText) break; // Sucesso! Sai do loop e segue
+                if (responseText) break; // Sucesso!
               } catch (err: any) {
                 lastError = err;
-                console.warn(`Modelo ${modelName} indisponível, tentando próximo...`, err?.message);
+                console.warn(`Modelo ${modelName} falhou, tentando o próximo...`, err?.message);
               }
             }
 
