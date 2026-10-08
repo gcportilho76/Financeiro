@@ -107,7 +107,9 @@ export const Route = createFileRoute("/api/import-extrato")({
             const google = createGoogleGenerativeAI({ apiKey: geminiKey });
 
             // Modelos 100% suportados no generateContent
-            const modelsToTry = [
+           const modelsToTry = [
+              "gemini-3.8-flash",
+              "gemini-3.5-flash-lite",
               "gemini-1.5-flash",
               "gemini-1.5-pro"
             ];
