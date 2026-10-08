@@ -183,7 +183,6 @@ export function ImportExtratoPanel() {
     setMensagem(null);
 
     try {
-      // Garante que o ID do utilizador está carregado
       let activeUserId = user?.id;
       if (!activeUserId) {
         const { data: authData } = await supabase.auth.getUser();
@@ -210,6 +209,7 @@ export function ImportExtratoPanel() {
 
         if (error) throw error;
       } else {
+        // Processamento para Extratos (despesas e receitas)
         const despesas = rows
           .filter((r) => r.tipo === 'despesa')
           .map((r) => ({
@@ -225,6 +225,25 @@ export function ImportExtratoPanel() {
           const { error } = await supabase
             .from('despesas')
             .insert(despesas);
+
+          if (error) throw error;
+        }
+
+        const receitas = rows
+          .filter((r) => r.tipo === 'receita')
+          .map((r) => ({
+            user_id: activeUserId,
+            conta_id: r.conta_id || contaPadrao,
+            data: r.data,
+            descricao: r.descricao,
+            valor: r.valor,
+            categoria: r.categoria
+          }));
+
+        if (receitas.length > 0) {
+          const { error } = await supabase
+            .from('receitas')
+            .insert(receitas);
 
           if (error) throw error;
         }
@@ -245,40 +264,6 @@ export function ImportExtratoPanel() {
       setSaving(false);
     }
   };
-        const receitas = rows
-          .filter(r => r.tipo === 'receita')
-          .map(r => ({
-            user_id: user?.id,
-            conta_id: r.conta_id || contaPadrao,
-            data: r.data,
-            descricao: r.descricao,
-            valor: r.valor,
-            categoria: r.categoria,
-            status: r.status
-          }));
-
-        if (despesas.length > 0) {
-          const { error } = await supabase.from('despesas').insert(despesas);
-          if (error) throw error;
-        }
-
-        if (receitas.length > 0) {
-          const { error } = await supabase.from('receitas').insert(receitas);
-          if (error) throw error;
-        }
-      }
-
-      setMensagem({ tipo: 'sucesso', texto: 'Lançamentos salvos com sucesso!' });
-      setRows([]);
-      setFile(null);
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : 'Erro ao salvar lançamentos.';
-      setMensagem({ tipo: 'erro', texto: 'Erro ao salvar lançamentos: ' + errorMsg });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
