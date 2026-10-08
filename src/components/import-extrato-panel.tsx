@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from "../integrations/supabase/client";
-import { useAuth } from "../hooks/useAuth";
+import { useAuth } from "../hooks/use-mobile";
 import { Upload, RefreshCw, Trash2, Check } from 'lucide-react';
 
 interface Transacao {
