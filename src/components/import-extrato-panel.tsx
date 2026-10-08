@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from "../integrations/supabase/client";
-import { useAuth } from "../hooks/useAuth";
 import { Upload, RefreshCw, Trash2, Check } from 'lucide-react';
 
 interface Transacao {
@@ -30,7 +29,13 @@ interface ApiTransacaoItem {
 }
 
 export function ImportExtratoPanel() {
-  const { user } = useAuth();
+  const [user, setUser] = useState<any>(null);
+
+useEffect(() => {
+  supabase.auth.getUser().then(({ data }) => {
+    setUser(data.user);
+  });
+}, []);
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [file, setFile] = useState<File | null>(null);
