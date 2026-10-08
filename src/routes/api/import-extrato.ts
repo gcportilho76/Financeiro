@@ -139,8 +139,7 @@ export const Route = createFileRoute("/api/import-extrato")({
               { error: `Erro na API do Gemini: ${aiErr?.message ?? String(aiErr)}` },
               502
             );
-          }
-          // ─── Parse JSON Response ────────────────────────────
+          }          // ─── Parse JSON Response ────────────────────────────
           let itens: ExtractedItem[] = [];
           const jsonMatch = responseText.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
