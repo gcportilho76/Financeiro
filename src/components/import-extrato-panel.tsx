@@ -177,38 +177,74 @@ export function ImportExtratoPanel() {
     setRows(rows.filter(row => row.id !== id));
   };
 
-  const salvarTransacoes = async () => {
+ const salvarTransacoes = async () => {
     if (rows.length === 0) return;
     setSaving(true);
+    setMensagem(null);
 
     try {
+      // Garante que o ID do utilizador está carregado
+      let activeUserId = user?.id;
+      if (!activeUserId) {
+        const { data: authData } = await supabase.auth.getUser();
+        activeUserId = authData?.user?.id;
+      }
+
+      if (!activeUserId) {
+        throw new Error('Utilizador não autenticado.');
+      }
+
       if (tipoDocumento === 'fatura') {
-        const lancamentosCartao = rows.map(r => ({
-          user_id: user?.id,
+        const lancamentosCartao = rows.map((r) => ({
+          user_id: activeUserId,
           cartao_id: r.cartao_id || cartaoPadrao,
           data: r.data,
           descricao: r.descricao,
           valor: r.valor,
-          categoria: r.categoria,
-          competencia: compDestino,
-          status: r.status
+          categoria: r.categoria
         }));
 
-        const { error } = await supabase.from('cartoes_lancamentos').insert(lancamentosCartao);
+        const { error } = await supabase
+          .from('cartoes_lancamentos')
+          .insert(lancamentosCartao);
+
         if (error) throw error;
       } else {
         const despesas = rows
-          .filter(r => r.tipo === 'despesa')
-          .map(r => ({
-            user_id: user?.id,
+          .filter((r) => r.tipo === 'despesa')
+          .map((r) => ({
+            user_id: activeUserId,
             conta_id: r.conta_id || contaPadrao,
             data: r.data,
             descricao: r.descricao,
             valor: r.valor,
-            categoria: r.categoria,
-            status: r.status
+            categoria: r.categoria
           }));
 
+        if (despesas.length > 0) {
+          const { error } = await supabase
+            .from('despesas')
+            .insert(despesas);
+
+          if (error) throw error;
+        }
+      }
+
+      setMensagem({
+        tipo: 'sucesso',
+        texto: `${rows.length} lançamentos salvos com sucesso!`
+      });
+      setRows([]);
+    } catch (err: any) {
+      console.error('Erro ao salvar transações:', err);
+      setMensagem({
+        tipo: 'erro',
+        texto: `Erro ao salvar lançamentos: ${err.message || 'Erro de validação'}`
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
         const receitas = rows
           .filter(r => r.tipo === 'receita')
           .map(r => ({
