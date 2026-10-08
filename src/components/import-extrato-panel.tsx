@@ -31,11 +31,21 @@ interface ApiTransacaoItem {
 export function ImportExtratoPanel() {
   const [user, setUser] = useState<any>(null);
 
-useEffect(() => {
-  supabase.auth.getUser().then(({ data }) => {
-    setUser(data.user);
-  });
-}, []);
+  useEffect(() => {
+    // Busca o utilizador atual no Supabase
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user) {
+        setUser(data.user);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    // Quando o utilizador for identificado, carrega os cartões e contas
+    if (user) {
+      carregarContasECartoes();
+    }
+  }, [user]);
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [file, setFile] = useState<File | null>(null);
@@ -51,16 +61,32 @@ useEffect(() => {
   const [mensagem, setMensagem] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
 
   useEffect(() => {
-    if (user) {
-      carregarContasECartoes();
-    }
+    // Garante o carregamento das contas/cartões buscando a sessão ativa se necessário
+    const buscarEcarregar = async () => {
+      let usuarioAtivo = user;
+      
+      if (!usuarioAtivo) {
+        const { data } = await supabase.auth.getUser();
+        usuarioAtivo = data?.user || null;
+        if (usuarioAtivo) setUser(usuarioAtivo);
+      }
+
+      if (usuarioAtivo) {
+        carregarContasECartoes(usuarioAtivo.id);
+      }
+    };
+
+    buscarEcarregar();
   }, [user]);
 
-  const carregarContasECartoes = async () => {
+  const carregarContasECartoes = async (userId?: string) => {
+    const idParaBuscar = userId || user?.id;
+    if (!idParaBuscar) return;
+
     try {
       const [resContas, resCartoes] = await Promise.all([
-        supabase.from('contas_bancarias').select('id, nome').eq('user_id', user?.id),
-        supabase.from('cartoes_credito').select('id, nome').eq('user_id', user?.id)
+        supabase.from('contas_bancarias').select('id, nome').eq('user_id', idParaBuscar),
+        supabase.from('cartoes_credito').select('id, nome').eq('user_id', idParaBuscar)
       ]);
 
       if (resContas.data && resContas.data.length > 0) {
@@ -73,7 +99,7 @@ useEffect(() => {
         setCartaoPadrao(resCartoes.data[0].id);
       }
     } catch (err) {
-      console.error('Erro ao carregar contas e cartões:', err);
+      console.error('Erro ao carregar contas e cartoes:', err);
     }
   };
 
