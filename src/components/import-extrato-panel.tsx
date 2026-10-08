@@ -197,7 +197,7 @@ export function ImportExtratoPanel() {
         const lancamentosCartao = rows.map((r) => ({
           user_id: activeUserId,
           cartao: r.cartao_id || cartaoPadrao,
-          competencia: compDestino,
+         competencia: compDestino ? `${compDestino}-01` : null,
           data_compra: r.data,
           descricao: r.descricao,
           valor: r.valor,
