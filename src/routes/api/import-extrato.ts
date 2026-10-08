@@ -106,10 +106,12 @@ export const Route = createFileRoute("/api/import-extrato")({
 
             const google = createGoogleGenerativeAI({ apiKey: geminiKey });
 
-            // Modelos suportados e ativos na API do Google
+            // Tenta cada modelo em sequência caso algum falhe por cota ou indisponibilidade
             const modelsToTry = [
-              "gemini-3.8-flash",
-              "gemini-3.5-flash-lite",
+              "gemini-1.5-flash",
+              "gemini-1.5-pro",
+              "gemini-2.0-flash-exp",
+              "gemini-1.5-flash-8b"
             ];
 
             let lastError: any = null;
@@ -120,13 +122,13 @@ export const Route = createFileRoute("/api/import-extrato")({
                   model: google(modelName),
                   system: SYSTEM_PROMPT,
                   messages: [{ role: "user", content: userContent }],
-                  maxRetries: 2,
+                  maxRetries: 1,
                 });
                 responseText = result.text.trim();
-                if (responseText) break; // Sucesso!
+                if (responseText) break; // Sucesso! Sai do loop e segue
               } catch (err: any) {
                 lastError = err;
-                console.warn(`Modelo ${modelName} falhou, tentando o próximo...`, err?.message);
+                console.warn(`Modelo ${modelName} indisponível, tentando próximo...`, err?.message);
               }
             }
 
@@ -140,7 +142,6 @@ export const Route = createFileRoute("/api/import-extrato")({
               502
             );
           }
-
           // ─── Parse JSON Response ────────────────────────────
           let itens: ExtractedItem[] = [];
           const jsonMatch = responseText.match(/\{[\s\S]*\}/);
