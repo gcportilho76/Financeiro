@@ -196,13 +196,21 @@ export function ImportExtratoPanel() {
       if (tipoDocumento === 'fatura') {
         const lancamentosCartao = rows.map((r) => ({
           user_id: activeUserId,
-          cartao_id: r.cartao_id || cartaoPadrao,
-          data_lancamento: r.data, // ou data_compra, caso o nome no banco seja esse
+          cartao: r.cartao_id || cartaoPadrao,
+          competencia: compDestino,
+          data_compra: r.data,
           descricao: r.descricao,
           valor: r.valor,
-          categoria: r.categoria
+          categoria: r.categoria,
+          status: 'pendente'
         }));
 
+        const { error } = await supabase
+          .from('cartoes_lancamentos')
+          .insert(lancamentosCartao);
+
+        if (error) throw error;
+      }
         const { error } = await supabase
           .from('cartoes_lancamentos')
           .insert(lancamentosCartao);
