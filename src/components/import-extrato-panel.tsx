@@ -147,17 +147,17 @@ export function ImportExtratoPanel() {
         throw new Error(data.error || 'Erro ao processar o arquivo.');
       }
 
-      const transacoesFormatadas: Transacao[] = (data.transacoes || []).map((item: ApiTransacaoItem, index: number) => ({
-        id: `temp-${index}-${Date.now()}`,
-        data: item.data || new Date().toISOString().substring(0, 10),
-        descricao: item.descricao || 'Sem descrição',
-        valor: Math.abs(Number(item.valor) || 0),
-        tipo: tipoDocumento === 'fatura' ? 'despesa' : (item.tipo || (Number(item.valor) < 0 ? 'despesa' : 'receita')),
-        categoria: item.categoria || 'Outros',
-        cartao_id: tipoDocumento === 'fatura' ? cartaoPadrao : item.cartao_id,
-        conta_id: tipoDocumento === 'extrato' ? contaPadrao : undefined,
-        status: 'pendente'
-      }));
+      const transacoesFormatadas: Transacao[] = (data.itens || data.transacoes || []).map((item: ApiTransacao, index: number) => ({
+  id: `temp-${index}-${Date.now()}`,
+  data: item.data || new Date().toISOString().substring(0, 10),
+  descricao: item.descricao || 'Sem descrição',
+  valor: Math.abs(Number(item.valor) || 0),
+  tipo: tipoDocumento === 'fatura' ? 'despesa' : (item.tipo || (Number(item.valor) < 0 ? 'receita' : 'despesa')),
+  categoria: item.categoria || 'Outros',
+  cartao_id: tipoDocumento === 'fatura' ? cartaoPadrao : item.cartao_id,
+  conta_id: tipoDocumento === 'fatura' ? undefined : contaPadrao,
+  status: 'pendente'
+}));
 
       setRows(transacoesFormatadas);
       setMensagem({ tipo: 'sucesso', texto: `${transacoesFormatadas.length} transações extraídas com sucesso!` });
