@@ -196,8 +196,8 @@ export function ImportExtratoPanel() {
       if (tipoDocumento === 'fatura') {
         const lancamentosCartao = rows.map((r) => ({
           user_id: activeUserId,
-          cartao: r.cartao_id || cartaoPadrao,
-          data: r.data,
+          cartao_id: r.cartao_id || cartaoPadrao,
+          data_lancamento: r.data, // ou data_compra, caso o nome no banco seja esse
           descricao: r.descricao,
           valor: r.valor,
           categoria: r.categoria
