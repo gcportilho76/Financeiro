@@ -194,15 +194,18 @@ export function ImportExtratoPanel() {
       }
 
       if (tipoDocumento === 'fatura') {
-        const lancamentosCartao = rows.map((r) => ({
+       const lancamentosCartao = rows.map((r) => ({
           user_id: activeUserId,
           cartao: r.cartao_id || cartaoPadrao,
-         competencia: compDestino ? `${compDestino}-01` : null,
+          // Garante que compDestino vire "2026-10-01"
+          competencia: compDestino 
+            ? (compDestino.length === 7 ? `${compDestino}-01` : compDestino)
+            : null,
           data_compra: r.data,
           descricao: r.descricao,
           valor: r.valor,
           categoria: r.categoria,
-          status: 'PENDENTE' // Alterado de 'pendente' para 'PENDENTE'
+          status: 'PENDENTE'
         }));
 
         const { error } = await supabase
