@@ -210,12 +210,6 @@ export function ImportExtratoPanel() {
           .insert(lancamentosCartao);
 
         if (error) throw error;
-      }
-        const { error } = await supabase
-          .from('cartoes_lancamentos')
-          .insert(lancamentosCartao);
-
-        if (error) throw error;
       } else {
         // Processamento para Extratos (despesas e receitas)
         const despesas = rows
@@ -256,6 +250,22 @@ export function ImportExtratoPanel() {
           if (error) throw error;
         }
       }
+
+      setMensagem({
+        tipo: 'sucesso',
+        texto: `${rows.length} lançamentos salvos com sucesso!`
+      });
+      setRows([]);
+    } catch (err: any) {
+      console.error('Erro ao salvar transações:', err);
+      setMensagem({
+        tipo: 'erro',
+        texto: `Erro ao salvar lançamentos: ${err.message || 'Erro de validação'}`
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
       setMensagem({
         tipo: 'sucesso',
