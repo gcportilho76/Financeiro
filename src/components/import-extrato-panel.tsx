@@ -211,7 +211,6 @@ export function ImportExtratoPanel() {
 
         if (error) throw error;
       } else {
-        // Processamento para Extratos (despesas e receitas)
         const despesas = rows
           .filter((r) => r.tipo === 'despesa')
           .map((r) => ({
@@ -250,22 +249,6 @@ export function ImportExtratoPanel() {
           if (error) throw error;
         }
       }
-
-      setMensagem({
-        tipo: 'sucesso',
-        texto: `${rows.length} lançamentos salvos com sucesso!`
-      });
-      setRows([]);
-    } catch (err: any) {
-      console.error('Erro ao salvar transações:', err);
-      setMensagem({
-        tipo: 'erro',
-        texto: `Erro ao salvar lançamentos: ${err.message || 'Erro de validação'}`
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
 
       setMensagem({
         tipo: 'sucesso',
