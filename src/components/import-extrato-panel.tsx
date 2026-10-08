@@ -202,7 +202,7 @@ export function ImportExtratoPanel() {
           descricao: r.descricao,
           valor: r.valor,
           categoria: r.categoria,
-          status: 'pendente'
+          status: 'PENDENTE' // Alterado de 'pendente' para 'PENDENTE'
         }));
 
         const { error } = await supabase
