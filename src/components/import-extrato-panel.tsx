@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from "../integrations/supabase/client";
-import { useAuth } from "../hooks/use-mobile";
+import { useAuth } from "../hooks/useAuth";
 import { Upload, RefreshCw, Trash2, Check } from 'lucide-react';
 
 interface Transacao {
@@ -29,7 +29,7 @@ interface ApiTransacaoItem {
   cartao_id?: string;
 }
 
-export function ExtratoImport() {
+export function ImportExtratoPanel() {
   const { user } = useAuth();
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
