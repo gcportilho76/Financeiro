@@ -196,16 +196,16 @@ export function ImportExtratoPanel() {
       if (tipoDocumento === 'fatura') {
        const lancamentosCartao = rows.map((r) => ({
           user_id: activeUserId,
-          cartao: r.cartao_id || cartaoPadrao,
-          // Garante que compDestino vire "2026-10-01"
-          competencia: compDestino 
-            ? (compDestino.length === 7 ? `${compDestino}-01` : compDestino)
-            : null,
-          data_compra: r.data,
-          descricao: r.descricao,
-          valor: r.valor,
-          categoria: r.categoria,
-          status: 'PENDENTE'
+        cartao: cartaoPadrao, // Mude de r.cartao_id para usar o NOME do cartão selecionado
+        competencia: compDestino
+          ? (compDestino.length === 7 ? `${compDestino}-01` : compDestino)
+          : null,
+        data_compra: r.data,
+        descricao: r.descricao,
+        valor: r.valor,
+        categoria: r.categoria,
+        status: 'PENDENTE',
+        ativo: true // ADD ESTA LINHA: Garante que entra na soma dos ativos'
         }));
 
         const { error } = await supabase
