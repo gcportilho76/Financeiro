@@ -80,14 +80,14 @@ export function ImportExtratoPanel() {
   }, [user]);
 
   const carregarContasECartoes = async (userId?: string) => {
-    const idParaBuscar = userId || user?.id;
-    if (!idParaBuscar) return;
-
     try {
+      // Busca todas as contas e cartões sem filtrar restritivamente
       const [resContas, resCartoes] = await Promise.all([
-        supabase.from('contas_bancarias').select('id, nome').eq('user_id', idParaBuscar),
-        supabase.from('cartoes_credito').select('id, nome').eq('user_id', idParaBuscar)
+        supabase.from('contas_bancarias').select('id, nome'),
+        supabase.from('cartoes_credito').select('id, nome')
       ]);
+
+      console.log('Cartões retornados do Supabase:', resCartoes.data);
 
       if (resContas.data && resContas.data.length > 0) {
         setContas(resContas.data as ItemOpcao[]);
