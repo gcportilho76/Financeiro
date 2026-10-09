@@ -193,48 +193,50 @@ export function ImportExtratoPanel() {
         throw new Error('Utilizador não autenticado.');
       }
 
+      // 1. Resolve o NOME real do cartão a partir do ID
+      const cartaoObj = (cartoesRegistry || []).find(
+        (c: any) => c.id === cartaoPadrao || c.nome === cartaoPadrao
+      );
+      const nomeCartao = cartaoObj?.nome || cartaoPadrao;
+
       const compFormatada = compDestino ? (compDestino.length === 7 ? `${compDestino}-01` : compDestino) : null;
 
       if (tipoDocumento === 'fatura') {
-        // 1. Soma o valor total da fatura importada
+        // 2. Calcula o valor total real da fatura importada
         const totalFatura = rows.reduce((acc, r) => acc + (Number(r.valor) || 0), 0);
 
-        // 2. Lança a despesa PAGA consolidada para o Dashboard principal
+        // 3. Lança a despesa PAGA no Dashboard para dar baixa imediata no orçamento geral
         const { error: despesaError } = await supabase
           .from('despesas')
           .insert({
             user_id: activeUserId,
-            descricao: `Fatura ${cartaoPadrao}`,
+            descricao: `Fatura ${nomeCartao}`,
             valor: totalFatura,
             data_venc: compFormatada || hojeISO(),
             competencia: compFormatada,
             categoria: 'Cartão',
             status: 'PAGO',
-            tipo: 'despesa' // Valor exato aceito na constraint
+            tipo: 'despesa'
           });
 
         if (despesaError) {
-          // Fallback caso a constraint exija 'DESPESA' em maiúsculas
-          const { error: despesaErrorUpper } = await supabase
-            .from('despesas')
-            .insert({
-              user_id: activeUserId,
-              descricao: `Fatura ${cartaoPadrao}`,
-              valor: totalFatura,
-              data_venc: compFormatada || hojeISO(),
-              competencia: compFormatada,
-              categoria: 'Cartão',
-              status: 'PAGO',
-              tipo: 'DESPESA'
-            });
-
-          if (despesaErrorUpper) throw despesaErrorUpper;
+          // Fallback caso a constraint exija 'DESPESA'
+          await supabase.from('despesas').insert({
+            user_id: activeUserId,
+            descricao: `Fatura ${nomeCartao}`,
+            valor: totalFatura,
+            data_venc: compFormatada || hojeISO(),
+            competencia: compFormatada,
+            categoria: 'Cartão',
+            status: 'PAGO',
+            tipo: 'DESPESA'
+          });
         }
 
-        // 3. Salva os lançamentos detalhados na aba Cartões
+        // 4. Salva os detalhamentos individuais para alimentar a aba Cartões e o card "Cartões (Soma)"
         const lancamentosCartao = rows.map((r) => ({
           user_id: activeUserId,
-          cartao: cartaoPadrao,
+          cartao: nomeCartao,
           competencia: compFormatada,
           data_compra: r.data,
           descricao: r.descricao,
