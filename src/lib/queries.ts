@@ -13,6 +13,7 @@ function nextCompetencia(c: string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+// Mapeia e sanitiza lançamentos para o tipo Cartao com proteção contra NaN e ativo nulo
 function mapCartaoLancamento(item: any): Cartao {
   return {
     ...item,
@@ -27,21 +28,21 @@ export async function fetchAll(competencia: string) {
   if (!userId) throw new Error("Não autenticado");
 
   const prev = prevCompetencia(competencia);
-  const compCurta = competencia.slice(0, 7);
+  const compCurta = competencia.slice(0, 7); // Ex: "2026-10"
 
   const [
-    profile, receitas, despesas, cartoesLancamentos, contratos, eventos, insumos, cartoesCadastrados, reservas,
-    saldosRows, receitasHist, despesasHist, cartoesHist,
+    profile, receitas, despesas, cartoesLancamentosRes, contratos, eventos, insumos, cartoesCadastrados, reservas,
+    saldosRows, receitasHist, despesasHist, cartoesHistRes,
   ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
     supabase.from("receitas").select("*").eq("competencia", competencia).order("data"),
     supabase.from("despesas").select("*").eq("competencia", competencia).order("data_venc"),
-    // Inclusão do filtro por user_id e competência flexível
+    
+    // Consulta direta dos lançamentos sem restrição de OR frágil
     supabase.from("cartoes_lancamentos")
       .select("*")
-      .eq("user_id", userId)
-      .or(`competencia.eq.${competencia},competencia.eq.${compCurta}`)
       .order("created_at"),
+
     supabase.from("consignados_contratos").select("*").eq("ativo", true).order("nome"),
     supabase.from("consignados_eventos").select("*").order("created_at", { ascending: false }),
     (supabase.from as any)("insumos").select("*").eq("competencia", competencia).order("validade", { ascending: true, nullsFirst: false }),
@@ -50,15 +51,24 @@ export async function fetchAll(competencia: string) {
     (supabase.from as any)("saldos_mensais").select("*").lte("competencia", competencia).order("competencia"),
     supabase.from("receitas").select("*").lt("competencia", competencia),
     supabase.from("despesas").select("*").lt("competencia", competencia),
-    supabase.from("cartoes_lancamentos").select("*").eq("user_id", userId).lt("competencia", competencia),
+    
+    // Consulta histórica dos lançamentos
+    supabase.from("cartoes_lancamentos")
+      .select("*")
+      .lt("competencia", competencia),
   ]);
+
+  // Filtragem local inteligente de competência (suporta 'YYYY-MM-DD' e 'YYYY-MM')
+  const todosLancamentos = (cartoesLancamentosRes.data ?? []).map(mapCartaoLancamento);
+  const cartoesAtuaisSanitizados = todosLancamentos.filter(
+    (c: any) => c.competencia === competencia || c.competencia === compCurta
+  );
+
+  const cartoesHistSanitizados = (cartoesHistRes.data ?? []).map(mapCartaoLancamento);
 
   const salarioBase = Number((profile.data as any)?.salario_base ?? 11000);
   const saldos = (saldosRows.data ?? []) as any[];
   const saldoMesRow = saldos.find((s) => s.competencia === competencia) ?? null;
-
-  const cartoesHistSanitizados = (cartoesHist.data ?? []).map(mapCartaoLancamento);
-  const cartoesAtuaisSanitizados = (cartoesLancamentos.data ?? []).map(mapCartaoLancamento);
 
   const meses = Array.from(
     new Set([
