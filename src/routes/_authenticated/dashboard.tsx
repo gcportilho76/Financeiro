@@ -870,7 +870,7 @@ function CartoesView({ data, comp, onSaved }: any) {
   const [editingCartao, setEditingCartao] = useState<any>(null);
 
   const registry = data?.cartoesRegistry ?? data?.cartoesCadastrados?.data ?? data?.cartoesCadastrados ?? data?.cartoes ?? [];
-  const cartoesLancamentos = data?.cartoes ?? [];
+  const cartoesLancamentos = data?.cartoesLancamentos ?? data?.cartoes ?? [];
 
   async function clonar(c: any) {
     const { id, created_at, ...rest } = c;
