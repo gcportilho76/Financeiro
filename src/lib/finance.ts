@@ -83,8 +83,9 @@ export function formatCompetencia(c: string) {
 // Soma cartões sem duplicidade: se uma fatura mãe consolidada tem filhos ativos detalhados na MESMA competência/cartão,
 // o consolidado é desativado para evitar duplicidade. Aqui simplesmente somamos os ativos — o usuário decide ativar/desativar.
 export function somaCartoesAtivos(cartoes: Cartao[]) {
-  return cartoes.filter((c) => c.ativo).reduce((s, c) => s + Number(c.valor), 0);
-}
+  return (cartoes || [])
+    .filter((c) => c.ativo !== false)
+    .reduce((s, c) => s + (Number(c.valor) || 0), 0);
 
 export function calcular({
   saldoInicial,
