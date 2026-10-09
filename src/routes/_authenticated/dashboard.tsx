@@ -1,3 +1,11 @@
+export function Dashboard() {
+  // --- ADICIONE ESTAS LINHAS DE DIAGNÓSTICO ---
+  console.log("=== DIAGNÓSTICO DE DADOS ===");
+  console.log("despesas:", data?.despesas);
+  console.log("cartoesLancamentos:", data?.cartoesLancamentos);
+  console.log("cartoes:", data?.cartoes);
+  console.log("=============================");
+  // ---------------------------------------------
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
