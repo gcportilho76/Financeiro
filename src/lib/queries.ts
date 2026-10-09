@@ -13,7 +13,6 @@ function nextCompetencia(c: string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-// Mapeia e sanitiza lançamentos para o tipo Cartao com proteção contra NaN e ativo nulo
 function mapCartaoLancamento(item: any): Cartao {
   return {
     ...item,
@@ -28,7 +27,7 @@ export async function fetchAll(competencia: string) {
   if (!userId) throw new Error("Não autenticado");
 
   const prev = prevCompetencia(competencia);
-  const compCurta = competencia.slice(0, 7); // 'YYYY-MM'
+  const compCurta = competencia.slice(0, 7);
 
   const [
     profile, receitas, despesas, cartoesLancamentos, contratos, eventos, insumos, cartoesCadastrados, reservas,
@@ -37,9 +36,10 @@ export async function fetchAll(competencia: string) {
     supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
     supabase.from("receitas").select("*").eq("competencia", competencia).order("data"),
     supabase.from("despesas").select("*").eq("competencia", competencia).order("data_venc"),
-    // Busca flexível aceitando 'YYYY-MM-DD' OU 'YYYY-MM'
+    // Inclusão do filtro por user_id e competência flexível
     supabase.from("cartoes_lancamentos")
       .select("*")
+      .eq("user_id", userId)
       .or(`competencia.eq.${competencia},competencia.eq.${compCurta}`)
       .order("created_at"),
     supabase.from("consignados_contratos").select("*").eq("ativo", true).order("nome"),
@@ -50,14 +50,13 @@ export async function fetchAll(competencia: string) {
     (supabase.from as any)("saldos_mensais").select("*").lte("competencia", competencia).order("competencia"),
     supabase.from("receitas").select("*").lt("competencia", competencia),
     supabase.from("despesas").select("*").lt("competencia", competencia),
-    supabase.from("cartoes_lancamentos").select("*").lt("competencia", competencia),
+    supabase.from("cartoes_lancamentos").select("*").eq("user_id", userId).lt("competencia", competencia),
   ]);
 
   const salarioBase = Number((profile.data as any)?.salario_base ?? 11000);
   const saldos = (saldosRows.data ?? []) as any[];
   const saldoMesRow = saldos.find((s) => s.competencia === competencia) ?? null;
 
-  // Sanitização dos históricos e mês atual
   const cartoesHistSanitizados = (cartoesHist.data ?? []).map(mapCartaoLancamento);
   const cartoesAtuaisSanitizados = (cartoesLancamentos.data ?? []).map(mapCartaoLancamento);
 
