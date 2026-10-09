@@ -119,7 +119,9 @@ function Dashboard() {
       setComp(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`);
     }
   }
-
+const totalCartaoDespesas = (data?.despesas ?? [])
+    .filter((d: any) => d.categoria?.toLowerCase() === "cartão" || d.categoria?.toLowerCase() === "cartao")
+    .reduce((acc: number, d: any) => acc + (Number(d.valor) || 0), 0);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Toaster richColors theme="dark" position="top-right" />
@@ -197,8 +199,8 @@ function Dashboard() {
           <MiniStat label="Despesas Cash" value={BRL(calc.totalDespesasCash)} sub={`Pagas: ${BRL(calc.despPagas)}`} color="warning" />
           <MiniStat 
             label="Cartões (Soma)" 
-            value={BRL((data.cartoesLancamentos ?? []).reduce((acc: number, c: any) => acc + (Number(c.valor) || 0), 0))} 
-            sub={`Lançamentos: ${(data.cartoesLancamentos ?? []).length}`} 
+            value={BRL(totalCartaoDespesas > 0 ? totalCartaoDespesas : somaCartoesAtivos(data?.cartoesLancamentos ?? []))} 
+            sub={`Total Fatura`} 
 />
           <MiniStat label="Reservas / Caixinhas" value={BRL(reservasGuardadas)} sub={`Patrimônio: ${BRL(calc.patrimonioTotal)}`} color="info" />
         </div>
