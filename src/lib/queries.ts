@@ -28,6 +28,7 @@ export async function fetchAll(competencia: string) {
   if (!userId) throw new Error("Não autenticado");
 
   const prev = prevCompetencia(competencia);
+  const compCurta = competencia.slice(0, 7); // 'YYYY-MM'
 
   const [
     profile, receitas, despesas, cartoesLancamentos, contratos, eventos, insumos, cartoesCadastrados, reservas,
@@ -36,7 +37,11 @@ export async function fetchAll(competencia: string) {
     supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
     supabase.from("receitas").select("*").eq("competencia", competencia).order("data"),
     supabase.from("despesas").select("*").eq("competencia", competencia).order("data_venc"),
-    supabase.from("cartoes_lancamentos").select("*").eq("competencia", competencia).order("created_at"),
+    // Busca flexível aceitando 'YYYY-MM-DD' OU 'YYYY-MM'
+    supabase.from("cartoes_lancamentos")
+      .select("*")
+      .or(`competencia.eq.${competencia},competencia.eq.${compCurta}`)
+      .order("created_at"),
     supabase.from("consignados_contratos").select("*").eq("ativo", true).order("nome"),
     supabase.from("consignados_eventos").select("*").order("created_at", { ascending: false }),
     (supabase.from as any)("insumos").select("*").eq("competencia", competencia).order("validade", { ascending: true, nullsFirst: false }),
@@ -52,7 +57,7 @@ export async function fetchAll(competencia: string) {
   const saldos = (saldosRows.data ?? []) as any[];
   const saldoMesRow = saldos.find((s) => s.competencia === competencia) ?? null;
 
-  // Sanitização dos históricos
+  // Sanitização dos históricos e mês atual
   const cartoesHistSanitizados = (cartoesHist.data ?? []).map(mapCartaoLancamento);
   const cartoesAtuaisSanitizados = (cartoesLancamentos.data ?? []).map(mapCartaoLancamento);
 
@@ -118,7 +123,7 @@ export async function fetchAll(competencia: string) {
     profile: profile.data,
     receitas: (receitas.data ?? []) as Receita[],
     despesas: despesasCompletas,
-    cartoes: cartoesAtuaisSanitizados, // Agora retorna os LANÇAMENTOS sanitizados para o cálculo do Dashboard!
+    cartoes: cartoesAtuaisSanitizados,
     cartoesLancamentos: cartoesAtuaisSanitizados,
     contratos: contratosAtivos as Contrato[],
     eventos: eventos.data ?? [],
