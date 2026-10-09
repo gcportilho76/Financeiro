@@ -199,8 +199,13 @@ const totalCartaoDespesas = (data?.despesas ?? [])
           <MiniStat label="Despesas Cash" value={BRL(calc.totalDespesasCash)} sub={`Pagas: ${BRL(calc.despPagas)}`} color="warning" />
           <MiniStat 
             label="Cartões (Soma)" 
-            value={BRL(totalCartaoDespesas > 0 ? totalCartaoDespesas : somaCartoesAtivos(data?.cartoesLancamentos ?? []))} 
-            sub={`Total Fatura`} 
+            value={BRL(
+              (data?.despesas ?? [])
+                 .filter((d: any) => d.categoria?.toLowerCase() === "cartão" || d.categoria?.toLowerCase() === "cartao")
+                 .reduce((acc: number, d: any) => acc + (Number(d.valor) || 0), 0) ||
+              (data?.cartoesLancamentos ?? []).reduce((acc: number, c: any) => acc + (Number(c.valor) || 0), 0)
+  )} 
+            sub="Total da Fatura" 
 />
           <MiniStat label="Reservas / Caixinhas" value={BRL(reservasGuardadas)} sub={`Patrimônio: ${BRL(calc.patrimonioTotal)}`} color="info" />
         </div>
