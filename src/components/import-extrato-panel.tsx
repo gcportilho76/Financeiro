@@ -193,47 +193,46 @@ export function ImportExtratoPanel() {
         throw new Error('Utilizador não autenticado.');
       }
 
-      if (tipoDocumento === 'fatura') {
-      if (tipoDocumento === 'fatura') {
-      // 1. Soma o valor total da fatura importada
-      const totalFatura = rows.reduce((acc, r) => acc + (Number(r.valor) || 0), 0);
       const compFormatada = compDestino ? (compDestino.length === 7 ? `${compDestino}-01` : compDestino) : null;
 
-      // 2. Lança a despesa PAGA no Dashboard Principal
-      const { error: despesaError } = await supabase
-        .from('despesas')
-        .insert({
+      if (tipoDocumento === 'fatura') {
+        // 1. Soma o valor total da fatura importada
+        const totalFatura = rows.reduce((acc, r) => acc + (Number(r.valor) || 0), 0);
+
+        // 2. Lança a despesa PAGA consolidada para o Dashboard principal
+        const { error: despesaError } = await supabase
+          .from('despesas')
+          .insert({
+            user_id: activeUserId,
+            descricao: `Fatura ${cartaoPadrao}`,
+            valor: totalFatura,
+            data_venc: compFormatada || hojeISO(),
+            competencia: compFormatada,
+            categoria: 'Cartão',
+            status: 'PAGO',
+            tipo: 'despesa'
+          });
+
+        if (despesaError) throw despesaError;
+
+        // 3. Salva os lançamentos detalhados na aba Cartões
+        const lancamentosCartao = rows.map((r) => ({
           user_id: activeUserId,
-          descricao: `Fatura ${cartaoPadrao}`,
-          valor: totalFatura,
-          data_venc: compFormatada || hojeISO(),
+          cartao: cartaoPadrao,
           competencia: compFormatada,
-          categoria: 'Cartão',
-          status: 'PAGO',
-          tipo: 'despesa'
-        });
+          data_compra: r.data,
+          descricao: r.descricao,
+          valor: r.valor,
+          categoria: r.categoria,
+          status: 'PENDENTE',
+          ativo: true
+        }));
 
-      if (despesaError) throw despesaError;
+        const { error } = await supabase
+          .from('cartoes_lancamentos')
+          .insert(lancamentosCartao);
 
-      // 3. Salva os detalhes das compras na aba Cartões
-      const lancamentosCartao = rows.map((r) => ({
-        user_id: activeUserId,
-        cartao: cartaoPadrao,
-        competencia: compFormatada,
-        data_compra: r.data,
-        descricao: r.descricao,
-        valor: r.valor,
-        categoria: r.categoria,
-        status: 'PENDENTE',
-        ativo: true
-      }));
-
-      const { error } = await supabase
-        .from('cartoes_lancamentos')
-        .insert(lancamentosCartao);
-
-      if (error) throw error;
-
+        if (error) throw error;
       } else {
         const despesas = rows
           .filter((r) => r.tipo === 'despesa')
@@ -247,44 +246,15 @@ export function ImportExtratoPanel() {
           }));
 
         if (despesas.length > 0) {
-          const { error } = await supabase
-            .from('despesas')
-            .insert(despesas);
-
-          if (error) throw error;
-        }
-
-        const receitas = rows
-          .filter((r) => r.tipo === 'receita')
-          .map((r) => ({
-            user_id: activeUserId,
-            conta_id: r.conta_id || contaPadrao,
-            data: r.data,
-            descricao: r.descricao,
-            valor: r.valor,
-            categoria: r.categoria
-          }));
-
-        if (receitas.length > 0) {
-          const { error } = await supabase
-            .from('receitas')
-            .insert(receitas);
-
+          const { error } = await supabase.from('despesas').insert(despesas);
           if (error) throw error;
         }
       }
 
-      setMensagem({
-        tipo: 'sucesso',
-        texto: `${rows.length} lançamentos salvos com sucesso!`
-      });
+      setMensagem({ tipo: 'sucesso', texto: 'Lançamentos salvos com sucesso!' });
       setRows([]);
     } catch (err: any) {
-      console.error('Erro ao salvar transações:', err);
-      setMensagem({
-        tipo: 'erro',
-        texto: `Erro ao salvar lançamentos: ${err.message || 'Erro de validação'}`
-      });
+      setMensagem({ tipo: 'erro', texto: err.message || 'Erro ao salvar lançamentos.' });
     } finally {
       setSaving(false);
     }
