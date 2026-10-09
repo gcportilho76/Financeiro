@@ -13,6 +13,15 @@ function nextCompetencia(c: string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+// Mapeia e sanitiza lançamentos para o tipo Cartao com proteção contra NaN e ativo nulo
+function mapCartaoLancamento(item: any): Cartao {
+  return {
+    ...item,
+    valor: Number(item.valor) || 0,
+    ativo: item.ativo !== false,
+  };
+}
+
 export async function fetchAll(competencia: string) {
   const { data: userRes } = await supabase.auth.getUser();
   const userId = userRes.user?.id;
@@ -43,13 +52,15 @@ export async function fetchAll(competencia: string) {
   const saldos = (saldosRows.data ?? []) as any[];
   const saldoMesRow = saldos.find((s) => s.competencia === competencia) ?? null;
 
-  // Encadeia o saldo inicial mês a mês a partir da última âncora salva
-  // (ou do saldo inicial do perfil), para não perder o histórico anterior.
+  // Sanitização dos históricos
+  const cartoesHistSanitizados = (cartoesHist.data ?? []).map(mapCartaoLancamento);
+  const cartoesAtuaisSanitizados = (cartoesLancamentos.data ?? []).map(mapCartaoLancamento);
+
   const meses = Array.from(
     new Set([
       ...((receitasHist.data ?? []) as any[]).map((r) => r.competencia),
       ...((despesasHist.data ?? []) as any[]).map((d) => d.competencia),
-      ...((cartoesHist.data ?? []) as any[]).map((c) => c.competencia),
+      ...cartoesHistSanitizados.map((c) => c.competencia),
       ...saldos.filter((s) => s.competencia < competencia).map((s) => s.competencia),
     ]),
   ).sort();
@@ -64,7 +75,7 @@ export async function fetchAll(competencia: string) {
       reservaMinima: 0,
       receitas: ((receitasHist.data ?? []) as Receita[]).filter((r) => r.competencia === cursor),
       despesas: ((despesasHist.data ?? []) as Despesa[]).filter((d) => d.competencia === cursor),
-      cartoes: ((cartoesHist.data ?? []) as Cartao[]).filter((c) => c.competencia === cursor),
+      cartoes: cartoesHistSanitizados.filter((c) => c.competencia === cursor),
       competencia: cursor,
       salarioBase,
     });
@@ -80,7 +91,6 @@ export async function fetchAll(competencia: string) {
 
   const contratosAtivos = (contratos.data ?? []) as any[];
 
-  // Projeta parcelas de consignados como despesas previstas no mês atual
   const despesasReais = (despesas.data ?? []) as Despesa[];
   const consignadosSinteticos: Despesa[] = [];
   for (const ct of contratosAtivos) {
@@ -95,7 +105,7 @@ export async function fetchAll(competencia: string) {
         data_venc: competencia,
         descricao: ct.nome,
         categoria: "Consignado",
-        valor: Number(ct.valor_parcela),
+        valor: Number(ct.valor_parcela) || 0,
         status: "PENDENTE",
         tipo: "consignado",
         recorrente: true,
@@ -108,8 +118,8 @@ export async function fetchAll(competencia: string) {
     profile: profile.data,
     receitas: (receitas.data ?? []) as Receita[],
     despesas: despesasCompletas,
-    cartoes: (cartoesCadastrados.data ?? []) as Cartao[],
-    cartoesLancamentos: (cartoesLancamentos.data ?? []) as Cartao[],
+    cartoes: cartoesAtuaisSanitizados, // Agora retorna os LANÇAMENTOS sanitizados para o cálculo do Dashboard!
+    cartoesLancamentos: cartoesAtuaisSanitizados,
     contratos: contratosAtivos as Contrato[],
     eventos: eventos.data ?? [],
     insumos: (insumos.data ?? []) as any[],
