@@ -194,8 +194,9 @@ export function ImportExtratoPanel() {
       }
 
       // 1. Resolve o NOME real do cartão a partir do ID
-      const cartaoObj = (cartoesRegistry || []).find(
-        (c: any) => c.id === cartaoPadrao || c.nome === cartaoPadrao
+      const listaCartoes = (cartoesRegistry || cartoesCadastrados || cartoes || []) as any[];
+      const cartaoObj = listaCartoes.find(
+        (c: any) => String(c.id) === String(cartaoPadrao) || c.nome === cartaoPadrao
       );
       const nomeCartao = cartaoObj?.nome || cartaoPadrao;
 
