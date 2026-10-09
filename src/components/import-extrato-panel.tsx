@@ -196,7 +196,7 @@ export function ImportExtratoPanel() {
       if (tipoDocumento === 'fatura') {
        const lancamentosCartao = rows.map((r) => ({
           user_id: activeUserId,
-        cartao: cartaoPadrao, // Mude de r.cartao_id para usar o NOME do cartão selecionado
+        cartao: cartaoPadrao, 
         competencia: compDestino
           ? (compDestino.length === 7 ? `${compDestino}-01` : compDestino)
           : null,
@@ -205,7 +205,7 @@ export function ImportExtratoPanel() {
         valor: r.valor,
         categoria: r.categoria,
         status: 'PENDENTE',
-        ativo: true // ADD ESTA LINHA: Garante que entra na soma dos ativos'
+        ativo: true 
         }));
 
         const { error } = await supabase
