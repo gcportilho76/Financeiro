@@ -197,8 +197,8 @@ function Dashboard() {
           <MiniStat label="Despesas Cash" value={BRL(calc.totalDespesasCash)} sub={`Pagas: ${BRL(calc.despPagas)}`} color="warning" />
           <MiniStat 
             label="Cartões (Soma)" 
-            value={BRL(somaCartoesAtivos(data.cartoesLancamentos ?? []))} 
-            sub={`Lançamentos: ${(data.cartoesLancamentos ?? []).length}`} 
+            value={BRL(somaCartoesAtivos(data.cartoes ?? []))} 
+            sub={`Lançamentos: ${(data.cartoes ?? []).length}`} 
 />
           <MiniStat label="Reservas / Caixinhas" value={BRL(reservasGuardadas)} sub={`Patrimônio: ${BRL(calc.patrimonioTotal)}`} color="info" />
         </div>
