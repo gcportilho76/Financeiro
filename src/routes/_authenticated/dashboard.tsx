@@ -93,7 +93,7 @@ function Dashboard() {
     reservaMinima: Number(profile.reserva_minima),
     receitas: data.receitas ?? [],
     despesas: data.despesas ?? [],
-    cartoes: data.cartoes ?? [],
+    cartoes: data.cartoesLancamentos ?? [],
     competencia: comp,
     reservasGuardadas,
     salarioBase: Number((profile as any).salario_base ?? 11000),
@@ -184,12 +184,12 @@ function Dashboard() {
 
         <Card className="p-5 bg-card border-border">
           <h2 className="text-sm font-semibold text-muted-foreground mb-3">DISTRIBUIÇÃO DAS DESPESAS</h2>
-          <PizzaReceita
-            receitas={calc.totalReceitas}
-            despesas={(data.despesas ?? []).filter((d: any) => d.tipo !== "consignado")}
-            cartoes={(data.cartoes ?? []).filter((c: any) => c.ativo)}
-            resultado={calc.resultadoMes}
-          />
+          <PizzaReceita 
+           receitas={calc.totalReceitas} 
+           despesas={data.despesas ?? []} 
+           cartoes={data.cartoesLancamentos ?? []} 
+           resultado={calc.resultadoMes} 
+/>
         </Card>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
