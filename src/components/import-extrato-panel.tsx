@@ -209,8 +209,8 @@ export function ImportExtratoPanel() {
             data_venc: compFormatada || hojeISO(),
             competencia: compFormatada,
             categoria: 'Cartão',
-            status: 'PAGO',
-            tipo: 'despesa'
+            status: 'PAGO'
+            // Campo 'tipo' removido para não violar a check constraint do Supabase
           });
 
         if (despesaError) throw despesaError;
