@@ -209,11 +209,27 @@ export function ImportExtratoPanel() {
             data_venc: compFormatada || hojeISO(),
             competencia: compFormatada,
             categoria: 'Cartão',
-            status: 'PAGO'
-            // Campo 'tipo' removido para não violar a check constraint do Supabase
+            status: 'PAGO',
+            tipo: 'despesa' // Valor exato aceito na constraint
           });
 
-        if (despesaError) throw despesaError;
+        if (despesaError) {
+          // Fallback caso a constraint exija 'DESPESA' em maiúsculas
+          const { error: despesaErrorUpper } = await supabase
+            .from('despesas')
+            .insert({
+              user_id: activeUserId,
+              descricao: `Fatura ${cartaoPadrao}`,
+              valor: totalFatura,
+              data_venc: compFormatada || hojeISO(),
+              competencia: compFormatada,
+              categoria: 'Cartão',
+              status: 'PAGO',
+              tipo: 'DESPESA'
+            });
+
+          if (despesaErrorUpper) throw despesaErrorUpper;
+        }
 
         // 3. Salva os lançamentos detalhados na aba Cartões
         const lancamentosCartao = rows.map((r) => ({
@@ -242,7 +258,8 @@ export function ImportExtratoPanel() {
             data: r.data,
             descricao: r.descricao,
             valor: r.valor,
-            categoria: r.categoria
+            categoria: r.categoria,
+            tipo: 'despesa'
           }));
 
         if (despesas.length > 0) {
