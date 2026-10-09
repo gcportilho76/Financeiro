@@ -67,7 +67,7 @@ export function competenciaAtual() {
 
 export function proxCompetencia(c: string) {
   const [y, m] = c.split("-").map(Number);
-  const d = new Date(y, m, 1); // m é 1-based mas Date é 0-based, então m = próximo
+  const d = new Date(y, m, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
@@ -80,12 +80,12 @@ export function formatCompetencia(c: string) {
   return `${meses[m - 1]}/${y}`;
 }
 
-// Soma cartões sem duplicidade: se uma fatura mãe consolidada tem filhos ativos detalhados na MESMA competência/cartão,
-// o consolidado é desativado para evitar duplicidade. Aqui simplesmente somamos os ativos — o usuário decide ativar/desativar.
+// Soma cartões sem duplicidade
 export function somaCartoesAtivos(cartoes: Cartao[]) {
   return (cartoes || [])
     .filter((c) => c.ativo !== false)
     .reduce((s, c) => s + (Number(c.valor) || 0), 0);
+}
 
 export function calcular({
   saldoInicial,
@@ -115,10 +115,8 @@ export function calcular({
   const reservasGuard = num(reservasGuardadas);
   const salarioBaseNum = num(salarioBase);
 
-  // Consignados são impacto neutro - já não contam como despesa cash
   const despesasCash = despesas;
 
-  // Modo planejamento (calculado antes dos totais para aplicar a projeção de salário base)
   const totalDias = diasNoMes(competencia);
   const hojeComp = hojeStr.slice(0, 7) + "-01";
   let diasRestantes: number;
@@ -141,8 +139,6 @@ export function calcular({
   const previstos = receitas
     .filter((r) => r.status === "PREVISTO")
     .reduce((s, r) => s + num(r.valor), 0);
-  // Mês futuro sem nenhuma receita lançada: projeta o salário base para
-  // evitar Resultado do Mês com Receita = R$ 0,00 (saldo negativo irreal)
   const receitaProjetada =
     modoPlanejamento && receitas.length === 0 ? Math.max(0, salarioBaseNum) : 0;
   const totalReceitas = recebidos + previstos + receitaProjetada;
@@ -155,7 +151,7 @@ export function calcular({
     .reduce((s, d) => s + num(d.valor), 0);
   const totalDespesasCash = despPagas + despPendentes;
 
-  const cartoesAtivos = cartoes.filter((c) => c.ativo);
+  const cartoesAtivos = cartoes.filter((c) => c.ativo !== false);
   const cartPagos = cartoesAtivos
     .filter((c) => c.status === "PAGO")
     .reduce((s, c) => s + num(c.valor), 0);
@@ -164,7 +160,6 @@ export function calcular({
     .reduce((s, c) => s + num(c.valor), 0);
   const totalCartoes = cartPagos + cartPendentes;
 
-  // Saldo Vivo: apenas RECEBIDO e PAGO, menos o que foi guardado em caixinhas
   const saldoVivo = saldoIni + recebidos - despPagas - cartPagos - reservasGuard;
 
   const totalPendentesGeral = despPendentes + cartPendentes;
@@ -174,11 +169,9 @@ export function calcular({
 
   const dispDiaria = diasRestantes > 0 ? margemLivre / diasRestantes : 0;
 
-  // Resultado Projetado = fluxo puro de caixa (reservas continuam sendo dinheiro seu, não são "gasto")
   const resultadoMes =
     saldoIni + totalReceitas - totalDespesasCash - totalCartoes;
 
-  // Patrimônio Total = saldo projetado (inclui o valor parado nas caixinhas)
   const patrimonioTotal = resultadoMes;
 
   return {
