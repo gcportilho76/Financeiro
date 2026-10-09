@@ -195,10 +195,10 @@ function Dashboard() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MiniStat label="Receitas" value={BRL(calc.totalReceitas)} sub={calc.receitaProjetada > 0 ? `Projeção salário base: ${BRL(calc.receitaProjetada)}` : `Recebidas: ${BRL(calc.recebidos)}`} color="success" />
           <MiniStat label="Despesas Cash" value={BRL(calc.totalDespesasCash)} sub={`Pagas: ${BRL(calc.despPagas)}`} color="warning" />
-         <MiniStat 
-           label="Cartões (Soma)" 
-           value={BRL((data.cartoesLancamentos ?? []).reduce((acc: number, c: any) => acc + (Number(c.valor) || 0), 0))} 
-           sub={`Lançamentos: ${(data.cartoesLancamentos ?? []).length}`} 
+          <MiniStat 
+            label="Cartões (Soma)" 
+            value={BRL((data.cartoesLancamentos ?? []).reduce((acc: number, c: any) => acc + (Number(c.valor) || 0), 0))} 
+            sub={`Lançamentos: ${(data.cartoesLancamentos ?? []).length}`} 
 />
           <MiniStat label="Reservas / Caixinhas" value={BRL(reservasGuardadas)} sub={`Patrimônio: ${BRL(calc.patrimonioTotal)}`} color="info" />
         </div>
