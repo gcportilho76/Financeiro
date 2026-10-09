@@ -194,25 +194,46 @@ export function ImportExtratoPanel() {
       }
 
       if (tipoDocumento === 'fatura') {
-       const lancamentosCartao = rows.map((r) => ({
+      if (tipoDocumento === 'fatura') {
+      // 1. Soma o valor total da fatura importada
+      const totalFatura = rows.reduce((acc, r) => acc + (Number(r.valor) || 0), 0);
+      const compFormatada = compDestino ? (compDestino.length === 7 ? `${compDestino}-01` : compDestino) : null;
+
+      // 2. Lança a despesa PAGA no Dashboard Principal
+      const { error: despesaError } = await supabase
+        .from('despesas')
+        .insert({
           user_id: activeUserId,
-        cartao: cartaoPadrao, 
-        competencia: compDestino
-          ? (compDestino.length === 7 ? `${compDestino}-01` : compDestino)
-          : null,
+          descricao: `Fatura ${cartaoPadrao}`,
+          valor: totalFatura,
+          data_venc: compFormatada || hojeISO(),
+          competencia: compFormatada,
+          categoria: 'Cartão',
+          status: 'PAGO',
+          tipo: 'despesa'
+        });
+
+      if (despesaError) throw despesaError;
+
+      // 3. Salva os detalhes das compras na aba Cartões
+      const lancamentosCartao = rows.map((r) => ({
+        user_id: activeUserId,
+        cartao: cartaoPadrao,
+        competencia: compFormatada,
         data_compra: r.data,
         descricao: r.descricao,
         valor: r.valor,
         categoria: r.categoria,
         status: 'PENDENTE',
-        ativo: true 
-        }));
+        ativo: true
+      }));
 
-        const { error } = await supabase
-          .from('cartoes_lancamentos')
-          .insert(lancamentosCartao);
+      const { error } = await supabase
+        .from('cartoes_lancamentos')
+        .insert(lancamentosCartao);
 
-        if (error) throw error;
+      if (error) throw error;
+
       } else {
         const despesas = rows
           .filter((r) => r.tipo === 'despesa')
