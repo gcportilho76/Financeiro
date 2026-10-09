@@ -387,7 +387,9 @@ function PizzaReceita({ receitas, despesas, cartoes, resultado }: any) {
       <div className="flex-1 space-y-1.5 w-full md:w-1/2">
         <div className="text-xs text-muted-foreground mb-2">Total Receita: <strong className="text-foreground">{BRL(receitas)}</strong></div>
         {fatias.map((f, i) => {
-          const pct = receitas > 0 ? (f.value / receitas) * 100 : 0;
+          const val = Number(f.value) || 0;
+          const rec = Number(receitas) || 0;
+          const pct = rec > 0 ? (val / rec) * 100 : 0;   
           return (
             <div key={i} className="flex items-center gap-2 text-sm">
               <div className="w-3 h-3 rounded-sm" style={{ background: coresFinais[i] }} />
