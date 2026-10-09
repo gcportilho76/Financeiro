@@ -347,13 +347,25 @@ function corDaFatia(nome: string, idx: number) {
 
 function PizzaReceita({ receitas, despesas, cartoes, resultado }: any) {
   const grupos: Record<string, number> = {};
-  for (const d of despesas) grupos[d.categoria] = (grupos[d.categoria] ?? 0) + Number(d.valor);
-  for (const c of cartoes) {
-    const cat = c.categoria || "Outros";
-    grupos[cat] = (grupos[cat] ?? 0) + Number(c.valor);
+
+  for (const d of despesas || []) {
+    const val = Number(d.valor) || 0;
+    const cat = d.categoria || "Outros";
+    grupos[cat] = (grupos[cat] ?? 0) + val;
   }
-  const fatias = Object.entries(grupos).map(([k, v]) => ({ name: k, value: v }));
-  if (resultado > 0) fatias.push({ name: "Sobra Líquida", value: resultado });
+
+  for (const c of cartoes || []) {
+    const val = Number(c.valor) || 0;
+    const cat = c.categoria || "Outros";
+    grupos[cat] = (grupos[cat] ?? 0) + val;
+  }
+
+  const fatias = Object.entries(grupos)
+    .filter(([_, v]) => v > 0)
+    .map(([k, v]) => ({ name: k, value: v }));
+
+  const resNum = Number(resultado) || 0;
+  if (resNum > 0) fatias.push({ name: "Sobra Líquida", value: resNum });
   if (fatias.length === 0) fatias.push({ name: "Sem dados", value: 1 });
 
   const usadas = new Set<string>();
@@ -367,6 +379,8 @@ function PizzaReceita({ receitas, despesas, cartoes, resultado }: any) {
     return c;
   });
 
+  const totalRec = Number(receitas) || 0;
+
   return (
     <div className="flex flex-col md:flex-row items-center gap-6">
       <div className="w-full md:w-1/2 h-[260px]">
@@ -379,23 +393,24 @@ function PizzaReceita({ receitas, despesas, cartoes, resultado }: any) {
             </Pie>
             <Tooltip
               contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
-              formatter={(v: any) => BRL(Number(v))}
+              formatter={(v: any) => BRL(Number(v) || 0)}
             />
           </PieChart>
         </ResponsiveContainer>
       </div>
       <div className="flex-1 space-y-1.5 w-full md:w-1/2">
-        <div className="text-xs text-muted-foreground mb-2">Total Receita: <strong className="text-foreground">{BRL(receitas)}</strong></div>
+        <div className="text-xs text-muted-foreground mb-2">Total Receita: <strong className="text-foreground">{BRL(totalRec)}</strong></div>
         {fatias.map((f, i) => {
           const val = Number(f.value) || 0;
-          const rec = Number(receitas) || 0;
-          const pct = rec > 0 ? (val / rec) * 100 : 0;   
+          const pct = totalRec > 0 ? (val / totalRec) * 100 : 0;
+          const pctValida = Number.isFinite(pct) ? pct : 0;
+
           return (
             <div key={i} className="flex items-center gap-2 text-sm">
               <div className="w-3 h-3 rounded-sm" style={{ background: coresFinais[i] }} />
               <span className="flex-1 truncate">{f.name}</span>
-              <span className="tabular text-muted-foreground">{pct.toFixed(1)}%</span>
-              <span className="tabular font-medium w-20 text-right">{BRL(f.value)}</span>
+              <span className="tabular text-muted-foreground">{pctValida.toFixed(1)}%</span>
+              <span className="tabular font-medium w-20 text-right">{BRL(val)}</span>
             </div>
           );
         })}
