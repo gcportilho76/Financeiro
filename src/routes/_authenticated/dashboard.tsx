@@ -127,9 +127,16 @@ export function Dashboard() {
   console.log("=============================");
   // ---------------------------------------------
 
-const totalCartaoDespesas = (data?.despesas ?? [])
-    .filter((d: any) => d.categoria?.toLowerCase()?.includes("cart"))
-    .reduce((acc: number, d: any) => acc + (Number(d.valor) || 0), 0);
+const totalCartaoDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) => {
+  const cat = String(
+    typeof d.categoria === "object" ? d.categoria?.nome : (d.categoria || d.categoria_nome || d.descricao || "")
+  ).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  if (cat.includes("cart") || cat.includes("cred") || cat.includes("fatura")) {
+    return acc + (Number(d.valor) || 0);
+  }
+  return acc;
+}, 0);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Toaster richColors theme="dark" position="top-right" />
