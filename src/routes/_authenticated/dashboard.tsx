@@ -126,7 +126,8 @@ export function Dashboard() {
   console.log("cartoesLancamentos:", data?.cartoesLancamentos);
   console.log("cartoes:", data?.cartoes);
   console.log("=============================");
-  // ---------------------------------------------  
+  // ---------------------------------------------
+    
 const totalCartaoDespesas = (data?.despesas ?? [])
     .filter((d: any) => d.categoria?.toLowerCase()?.includes("cart"))
     .reduce((acc: number, d: any) => acc + (Number(d.valor) || 0), 0);
