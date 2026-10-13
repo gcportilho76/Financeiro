@@ -205,11 +205,7 @@ const totalCartaoDespesas = (data?.despesas ?? [])
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MiniStat label="Receitas" value={BRL(calc.totalReceitas)} sub={calc.receitaProjetada > 0 ? `Projeção salário base: ${BRL(calc.receitaProjetada)}` : `Recebidas: ${BRL(calc.recebidos)}`} color="success" />
           <MiniStat label="Despesas Cash" value={BRL(calc.totalDespesasCash)} sub={`Pagas: ${BRL(calc.despPagas)}`} color="warning" />
-          <MiniStat 
-            label="Cartões (Soma)" 
-            value={BRL(totalCartaoDespesas > 0 ? totalCartaoDespesas : somaCartoesAtivos(data?.cartoesLancamentos ?? []))} 
-            sub="Total Fatura" 
-/>
+          <MiniStat label="Cartões (Soma)" value={BRL(totalCartaoDespesas > 0 ? totalCartaoDespesas : somaCartoesAtivos(data?.cartoesLancamentos ?? []))} sub="Total Fatura" />
           <MiniStat label="Reservas / Caixinhas" value={BRL(reservasGuardadas)} sub={`Patrimônio: ${BRL(calc.patrimonioTotal)}`} color="info" />
         </div>
 
