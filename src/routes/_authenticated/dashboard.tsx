@@ -45,7 +45,7 @@ const CATEGORIAS_DESPESA = [
 ];
 const CATEGORIAS_RECEITA = ["Salário", "Freelance", "Investimentos", "Outros"];
 
-function Dashboard() {
+export function Dashboard() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [comp, setComp] = useState(competenciaAtual());
@@ -119,7 +119,6 @@ function Dashboard() {
       setComp(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`);
     }
   }
-export function Dashboard() {
   // --- ADICIONE ESTAS LINHAS DE DIAGNÓSTICO ---
   console.log("=== DIAGNÓSTICO DE DADOS ===");
   console.log("despesas:", data?.despesas);
@@ -127,7 +126,7 @@ export function Dashboard() {
   console.log("cartoes:", data?.cartoes);
   console.log("=============================");
   // ---------------------------------------------
-    
+
 const totalCartaoDespesas = (data?.despesas ?? [])
     .filter((d: any) => d.categoria?.toLowerCase()?.includes("cart"))
     .reduce((acc: number, d: any) => acc + (Number(d.valor) || 0), 0);
