@@ -37,18 +37,22 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
   const [totalParcelas, setTotalParcelas] = useState("");
   const [parcelaAtual, setParcelaAtual] = useState("");
 
-  // Sincroniza dados do Supabase ou usa a lista padrão caso esteja vazia
-  useEffect(() => {
-    const dadosVindos = data?.compras_parceladas || data?.cartoes_lancamentos;
-    if (dadosVindos && dadosVindos.length > 0) {
-      setCompras(dadosVindos);
-    } else if (compras.length === 0) {
-      setCompras([
-        { id: "c1", descricao: "Eletrônicos / Notebook", cartao: "Nubank", valor_parcela: 350.00, parcela_atual: 4, total_parcelas: 10 },
-        { id: "c2", descricao: "Móveis e Decoração", cartao: "Itaú", valor_parcela: 220.50, parcela_atual: 8, total_parcelas: 12 },
-        { id: "c3", descricao: "Passagens Aéreas", cartao: "XP", valor_parcela: 480.00, parcela_atual: 2, total_parcelas: 6 },
-      ]);
+  // Busca as compras reais salvas no Supabase ao carregar
+  const fetchCompras = async () => {
+    try {
+      const { data: dbData, error } = await supabase.from("cartoes_parcelados").select("*");
+      if (!error && dbData) {
+        setCompras(dbData);
+      } else {
+        setCompras(data?.compras_parceladas || []);
+      }
+    } catch {
+      setCompras(data?.compras_parceladas || []);
     }
+  };
+
+  useEffect(() => {
+    fetchCompras();
   }, [data]);
 
   const handleOpenModal = (item?: CompraParceladaItem) => {
@@ -72,7 +76,7 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
 
   const handleSave = async () => {
     if (!descricao || !valorParcela || !totalParcelas || !parcelaAtual) {
-      toast.error("Preencha os campos obrigatórios");
+      toast.error("Preencha todos os campos obrigatórios");
       return;
     }
 
@@ -84,48 +88,39 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
       parcela_atual: parseInt(parcelaAtual, 10),
     };
 
-    if (editingItem) {
-      // Atualização Local
-      setCompras((prev) =>
-        prev.map((item) => (item.id === editingItem.id ? { ...item, ...payload } : item))
-      );
-      // Tenta persistir no Supabase se não for ID temporário
-      if (!editingItem.id.startsWith("c")) {
-        await supabase.from("cartoes_parcelados").update(payload).eq("id", editingItem.id);
+    try {
+      if (editingItem?.id && !editingItem.id.startsWith("c")) {
+        const { error } = await supabase.from("cartoes_parcelados").update(payload).eq("id", editingItem.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("cartoes_parcelados").insert([payload]);
+        if (error) throw error;
       }
-      toast.success("Compra atualizada!");
-    } else {
-      const novoItem = { id: "item_" + Date.now(), ...payload };
-      setCompras((prev) => [...prev, novoItem]);
-      // Tenta persistir no Supabase
-      await supabase.from("cartoes_parcelados").insert([payload]);
-      toast.success("Compra cadastrada!");
+      toast.success("Compra salva com sucesso!");
+      setIsModalOpen(false);
+      await fetchCompras();
+      if (onSaved) onSaved();
+    } catch (err: any) {
+      toast.error("Erro ao salvar no banco: " + err.message);
     }
-
-    setIsModalOpen(false);
-    if (onSaved) onSaved();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Deseja realmente remover esta compra parcelada?")) return;
 
-    // Remove do estado local imediatamente
-    setCompras((prev) => prev.filter((item) => item.id !== id));
-
-    // Se for um item salvo no banco, apaga do Supabase também
-    if (!id.startsWith("c") && !id.startsWith("item_")) {
-      try {
-        await supabase.from("cartoes_parcelados").delete().eq("id", id);
-      } catch (err) {
-        console.error("Erro ao apagar no Supabase:", err);
+    try {
+      if (!id.startsWith("c")) {
+        const { error } = await supabase.from("cartoes_parcelados").delete().eq("id", id);
+        if (error) throw error;
       }
+      setCompras((prev) => prev.filter((item) => item.id !== id));
+      toast.success("Compra removida!");
+      if (onSaved) onSaved();
+    } catch (err: any) {
+      toast.error("Erro ao excluir: " + err.message);
     }
-
-    toast.success("Compra removida!");
-    if (onSaved) onSaved();
   };
 
-  // Processamento dos dados para o cronograma
   const comprasProcessadas = compras.map((item) => {
     const pAtual = Number(item.parcela_atual) || 1;
     const pTotal = Number(item.total_parcelas) || 1;
@@ -160,7 +155,7 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
 
   return (
     <div className="space-y-6 mt-4">
-      {/* Cabecalho */}
+      {/* Cabeçalho */}
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
           <CreditCard className="w-5 h-5 text-primary" /> Cronograma de Quitação de Compras Parceladas
@@ -221,28 +216,34 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {comprasProcessadas.map((c) => (
-            <div key={c.id} className="space-y-2 border-b border-border/40 pb-4 last:border-0 last:pb-0">
-              <div className="flex justify-between items-center text-sm">
-                <div>
-                  <span className="font-semibold text-foreground">{c.descricao}</span>
-                  <span className="text-xs text-muted-foreground ml-2">({c.cartao}) — R$ {c.parcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mês</span>
+          {comprasProcessadas.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              Nenhuma compra parcelada cadastrada. Clique em "+ Nova Compra Parcelada" acima para cadastrar.
+            </p>
+          ) : (
+            comprasProcessadas.map((c) => (
+              <div key={c.id} className="space-y-2 border-b border-border/40 pb-4 last:border-0 last:pb-0">
+                <div className="flex justify-between items-center text-sm">
+                  <div>
+                    <span className="font-semibold text-foreground">{c.descricao}</span>
+                    <span className="text-xs text-muted-foreground ml-2">({c.cartao}) — R$ {c.parcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mês</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-emerald-500 font-medium text-xs sm:text-sm">
+                      Quita em: {c.fimEstimado} ({c.parcelaAtual}/{c.totalParcelas} — faltam {c.parcelasRestantes} meses)
+                    </span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleOpenModal(c.rawItem)}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive/80" onClick={() => handleDelete(c.id)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-emerald-500 font-medium text-xs sm:text-sm">
-                    Quita em: {c.fimEstimado} ({c.parcelaAtual}/{c.totalParcelas} — faltam {c.parcelasRestantes} meses)
-                  </span>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleOpenModal(c.rawItem)}>
-                    <Pencil className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive/80" onClick={() => handleDelete(c.id)}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
+                <Progress value={c.progresso} className="h-2 bg-secondary" />
               </div>
-              <Progress value={c.progresso} className="h-2 bg-secondary" />
-            </div>
-          ))}
+            ))
+          )}
         </CardContent>
       </Card>
 
