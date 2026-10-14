@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ interface CartoesParceladosViewProps {
 }
 
 export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewProps) {
+  const [compras, setCompras] = useState<CompraParceladaItem[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CompraParceladaItem | null>(null);
 
@@ -36,17 +37,19 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
   const [totalParcelas, setTotalParcelas] = useState("");
   const [parcelaAtual, setParcelaAtual] = useState("");
 
-  // Tenta obter compras parceladas vindas do Supabase ou usa dados simulados para estruturação
-  const comprasBrutas: CompraParceladaItem[] =
-    (data?.compras_parceladas && data.compras_parceladas.length > 0)
-      ? data.compras_parceladas
-      : (data?.cartoes_lancamentos && data.cartoes_lancamentos.length > 0)
-      ? data.cartoes_lancamentos
-      : [
-          { id: "c1", descricao: "Eletrônicos / Notebook", cartao: "Nubank", valor_parcela: 350.00, parcela_atual: 4, total_parcelas: 10 },
-          { id: "c2", descricao: "Móveis e Decoração", cartao: "Itaú", valor_parcela: 220.50, parcela_atual: 8, total_parcelas: 12 },
-          { id: "c3", descricao: "Passagens Aéreas", cartao: "XP", valor_parcela: 480.00, parcela_atual: 2, total_parcelas: 6 },
-        ];
+  // Sincroniza dados do Supabase ou usa a lista padrão caso esteja vazia
+  useEffect(() => {
+    const dadosVindos = data?.compras_parceladas || data?.cartoes_lancamentos;
+    if (dadosVindos && dadosVindos.length > 0) {
+      setCompras(dadosVindos);
+    } else if (compras.length === 0) {
+      setCompras([
+        { id: "c1", descricao: "Eletrônicos / Notebook", cartao: "Nubank", valor_parcela: 350.00, parcela_atual: 4, total_parcelas: 10 },
+        { id: "c2", descricao: "Móveis e Decoração", cartao: "Itaú", valor_parcela: 220.50, parcela_atual: 8, total_parcelas: 12 },
+        { id: "c3", descricao: "Passagens Aéreas", cartao: "XP", valor_parcela: 480.00, parcela_atual: 2, total_parcelas: 6 },
+      ]);
+    }
+  }, [data]);
 
   const handleOpenModal = (item?: CompraParceladaItem) => {
     if (item) {
@@ -81,37 +84,49 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
       parcela_atual: parseInt(parcelaAtual, 10),
     };
 
-    try {
-      if (editingItem?.id && !editingItem.id.startsWith("c")) {
-        const { error } = await supabase.from("cartoes_parcelados").update(payload).eq("id", editingItem.id);
-        if (error) throw error;
-        toast.success("Compra parcelada atualizada!");
-      } else {
-        const { error } = await supabase.from("cartoes_parcelados").insert([payload]);
-        if (error) throw error;
-        toast.success("Compra parcelada cadastrada!");
+    if (editingItem) {
+      // Atualização Local
+      setCompras((prev) =>
+        prev.map((item) => (item.id === editingItem.id ? { ...item, ...payload } : item))
+      );
+      // Tenta persistir no Supabase se não for ID temporário
+      if (!editingItem.id.startsWith("c")) {
+        await supabase.from("cartoes_parcelados").update(payload).eq("id", editingItem.id);
       }
-      setIsModalOpen(false);
-      if (onSaved) onSaved();
-    } catch (err: any) {
-      toast.error("Erro ao salvar: " + err.message);
+      toast.success("Compra atualizada!");
+    } else {
+      const novoItem = { id: "item_" + Date.now(), ...payload };
+      setCompras((prev) => [...prev, novoItem]);
+      // Tenta persistir no Supabase
+      await supabase.from("cartoes_parcelados").insert([payload]);
+      toast.success("Compra cadastrada!");
     }
+
+    setIsModalOpen(false);
+    if (onSaved) onSaved();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Deseja realmente remover esta compra parcelada?")) return;
-    try {
-      const { error } = await supabase.from("cartoes_parcelados").delete().eq("id", id);
-      if (error) throw error;
-      toast.success("Compra removida!");
-      if (onSaved) onSaved();
-    } catch (err: any) {
-      toast.error("Erro ao excluir: " + err.message);
+
+    // Remove do estado local imediatamente
+    setCompras((prev) => prev.filter((item) => item.id !== id));
+
+    // Se for um item salvo no banco, apaga do Supabase também
+    if (!id.startsWith("c") && !id.startsWith("item_")) {
+      try {
+        await supabase.from("cartoes_parcelados").delete().eq("id", id);
+      } catch (err) {
+        console.error("Erro ao apagar no Supabase:", err);
+      }
     }
+
+    toast.success("Compra removida!");
+    if (onSaved) onSaved();
   };
 
-  // Processamento dos dados para cronograma dinâmico
-  const comprasProcessadas = comprasBrutas.map((item) => {
+  // Processamento dos dados para o cronograma
+  const comprasProcessadas = compras.map((item) => {
     const pAtual = Number(item.parcela_atual) || 1;
     const pTotal = Number(item.total_parcelas) || 1;
     const pRestantes = Math.max(0, pTotal - pAtual);
@@ -138,7 +153,6 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
     };
   });
 
-  // Ordena pela compra que vai quitar mais rápido
   comprasProcessadas.sort((a, b) => a.parcelasRestantes - b.parcelasRestantes);
 
   const totalComprometidoCartao = comprasProcessadas.reduce((acc, c) => acc + c.parcela, 0);
