@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CreditCard, TrendingDown, Plus, Pencil, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface CompraParceladaItem {
@@ -21,10 +20,11 @@ interface CompraParceladaItem {
 interface CartoesParceladosViewProps {
   data?: {
     compras_parceladas?: CompraParceladaItem[];
-    cartoes_lancamentos?: CompraParceladaItem[];
   };
   onSaved?: () => void;
 }
+
+const STORAGE_KEY = "orçamento_gute_cartoes_parcelados";
 
 export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewProps) {
   const [compras, setCompras] = useState<CompraParceladaItem[]>([]);
@@ -37,23 +37,29 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
   const [totalParcelas, setTotalParcelas] = useState("");
   const [parcelaAtual, setParcelaAtual] = useState("");
 
-  // Busca as compras reais salvas no Supabase ao carregar
-  const fetchCompras = async () => {
+  // Carrega os dados do localStorage ao iniciar
+  useEffect(() => {
     try {
-      const { data: dbData, error } = await supabase.from("cartoes_parcelados").select("*");
-      if (!error && dbData) {
-        setCompras(dbData);
-      } else {
-        setCompras(data?.compras_parceladas || []);
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        setCompras(JSON.parse(saved));
+      } else if (data?.compras_parceladas && data.compras_parceladas.length > 0) {
+        setCompras(data.compras_parceladas);
       }
     } catch {
-      setCompras(data?.compras_parceladas || []);
+      setCompras([]);
+    }
+  }, []);
+
+  // Salva no localStorage sempre que o estado mudar
+  const saveToStorage = (updatedList: CompraParceladaItem[]) => {
+    setCompras(updatedList);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
+    } catch (e) {
+      console.error("Erro ao salvar localmente:", e);
     }
   };
-
-  useEffect(() => {
-    fetchCompras();
-  }, [data]);
 
   const handleOpenModal = (item?: CompraParceladaItem) => {
     if (item) {
@@ -74,51 +80,42 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
     setIsModalOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!descricao || !valorParcela || !totalParcelas || !parcelaAtual) {
-      toast.error("Preencha todos os campos obrigatórios");
+      toast.error("Preencha os campos obrigatórios");
       return;
     }
 
-    const payload = {
+    const payload: CompraParceladaItem = {
+      id: editingItem ? editingItem.id : "compra_" + Date.now(),
       descricao,
-      cartao,
+      cartao: cartao || "Cartão",
       valor_parcela: parseFloat(valorParcela.replace(",", ".")),
       total_parcelas: parseInt(totalParcelas, 10),
       parcela_atual: parseInt(parcelaAtual, 10),
     };
 
-    try {
-      if (editingItem?.id && !editingItem.id.startsWith("c")) {
-        const { error } = await supabase.from("cartoes_parcelados").update(payload).eq("id", editingItem.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("cartoes_parcelados").insert([payload]);
-        if (error) throw error;
-      }
-      toast.success("Compra salva com sucesso!");
-      setIsModalOpen(false);
-      await fetchCompras();
-      if (onSaved) onSaved();
-    } catch (err: any) {
-      toast.error("Erro ao salvar no banco: " + err.message);
+    let updatedList: CompraParceladaItem[];
+
+    if (editingItem) {
+      updatedList = compras.map((item) => (item.id === editingItem.id ? payload : item));
+      toast.success("Compra parcelada atualizada!");
+    } else {
+      updatedList = [...compras, payload];
+      toast.success("Compra parcelada cadastrada!");
     }
+
+    saveToStorage(updatedList);
+    setIsModalOpen(false);
+    if (onSaved) onSaved();
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!confirm("Deseja realmente remover esta compra parcelada?")) return;
-
-    try {
-      if (!id.startsWith("c")) {
-        const { error } = await supabase.from("cartoes_parcelados").delete().eq("id", id);
-        if (error) throw error;
-      }
-      setCompras((prev) => prev.filter((item) => item.id !== id));
-      toast.success("Compra removida!");
-      if (onSaved) onSaved();
-    } catch (err: any) {
-      toast.error("Erro ao excluir: " + err.message);
-    }
+    const updatedList = compras.filter((item) => item.id !== id);
+    saveToStorage(updatedList);
+    toast.success("Compra removida!");
+    if (onSaved) onSaved();
   };
 
   const comprasProcessadas = compras.map((item) => {
@@ -165,7 +162,7 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
         </Button>
       </div>
 
-      {/* Indicadores Principais */}
+      {/* Cards Indicadores */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
@@ -208,7 +205,7 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
         </Card>
       </div>
 
-      {/* Cronograma Visual */}
+      {/* Lista / Cronograma Visual */}
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -218,7 +215,7 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
         <CardContent className="space-y-6">
           {comprasProcessadas.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">
-              Nenhuma compra parcelada cadastrada. Clique em "+ Nova Compra Parcelada" acima para cadastrar.
+              Nenhuma compra parcelada cadastrada. Clique no botão acima para realizar seu primeiro lançamento.
             </p>
           ) : (
             comprasProcessadas.map((c) => (
@@ -247,7 +244,7 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
         </CardContent>
       </Card>
 
-      {/* Modal de Cadastro/Edição */}
+      {/* Modal para Cadastro/Edição */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent>
           <DialogHeader>
@@ -256,7 +253,7 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Descrição da Compra</Label>
-              <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex: Notebook, Passagens, Celular..." />
+              <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex: Notebook, Celular..." />
             </div>
             <div className="space-y-2">
               <Label>Cartão Utilizado</Label>
@@ -269,7 +266,7 @@ export function CartoesParceladosView({ data, onSaved }: CartoesParceladosViewPr
               </div>
               <div className="space-y-2">
                 <Label>Parcela Atual</Label>
-                <Input value={parcelaAtual} onChange={(e) => setParcelaAtual(e.target.value)} placeholder="3" />
+                <Input value={parcelaAtual} onChange={(e) => setParcelaAtual(e.target.value)} placeholder="1" />
               </div>
               <div className="space-y-2">
                 <Label>Total Parcelas</Label>
