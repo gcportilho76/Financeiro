@@ -137,7 +137,7 @@ const totalCartaoDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) 
   }
   return acc;
 }, 0);
-// Filtra despesas manuais ignorando os tributos/descontos já retidos no contracheque
+// 1. Filtra despesas ignorando retenções da folha (IRRF, PSS, GEAP) E faturas de cartão
 const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
   const desc = String(d.descricao || "").toLowerCase();
   const cat = String(
@@ -158,6 +158,12 @@ const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
 
   return !ehRetencaoOuCartao;
 });
+
+// 2. Soma apenas o cash/pix puro
+const totalDespesasCashReais = despesasCashFiltradas.reduce(
+  (acc: number, d: any) => acc + (Number(d.valor) || 0),
+  0
+);
 
   return !ehRetencaoFolha;
 });
