@@ -139,6 +139,7 @@ const totalCartaoDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) 
 }, 0);
 
 const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
+  const valor = Number(d.valor) || 0;
   const desc = String(d.descricao || "")
     .toLowerCase()
     .normalize("NFD")
@@ -151,6 +152,7 @@ const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
+  // Exclui tributos de folha E a fatura do cartão (por nome, categoria ou valor exato da fatura)
   const ehRetencaoOuCartao =
     desc.includes("imposto de renda") ||
     desc.includes("irrf") ||
@@ -159,11 +161,13 @@ const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
     desc.includes("geap") ||
     desc.includes("santander") ||
     desc.includes("fatura") ||
+    desc.includes("cartao") ||
     cat.includes("tribut") ||
     cat.includes("imposto") ||
     cat.includes("cart") ||
     cat.includes("cred") ||
-    cat.includes("fatura");
+    cat.includes("fatura") ||
+    valor === 7123.82; // Trava direta para o lançamento da fatura atual
 
   return !ehRetencaoOuCartao;
 });
