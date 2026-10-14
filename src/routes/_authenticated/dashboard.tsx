@@ -11,6 +11,7 @@ import { ComprometidosPanel } from "@/components/comprometidos-panel";
 import { ContasPanel } from "@/components/contas-panel";
 import { ImportExtratoPanel } from "@/components/import-extrato-panel";
 import { ConsignadosView } from "@/components/ConsignadosView";
+import { CartoesParceladosView } from "@/components/CartoesParceladosView";
 import { fetchAll } from "@/lib/queries";
 
 import {
@@ -299,7 +300,7 @@ return (
           </TabsContent>
 
           <TabsContent value="cartoes" className="mt-4">
-            <CartoesView data={data} comp={comp} onSaved={refresh} />
+            <CartoesParceladosView data={data} onSaved={refresh} />
           </TabsContent>
 
           <TabsContent value="insumos" className="mt-4">
