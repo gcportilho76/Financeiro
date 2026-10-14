@@ -307,7 +307,7 @@ return (
           </TabsContent>
 
          <TabsContent value="consignados" className="mt-4">
-           <ConsignadosView data={data} />
+           <ConsignadosView data={data} onSaved={refresh} />
          </TabsContent>
 
           <TabsContent value="reservas" className="mt-4">
