@@ -139,10 +139,17 @@ const totalCartaoDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) 
 }, 0);
 
 const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
-  const desc = String(d.descricao || "").toLowerCase();
+  const desc = String(d.descricao || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
   const cat = String(
     typeof d.categoria === "object" ? d.categoria?.nome : (d.categoria || d.categoria_nome || "")
-  ).toLowerCase();
+  )
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
   const ehRetencaoOuCartao =
     desc.includes("imposto de renda") ||
