@@ -144,14 +144,20 @@ const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
     typeof d.categoria === "object" ? d.categoria?.nome : (d.categoria || d.categoria_nome || "")
   ).toLowerCase();
 
-  const ehRetencaoFolha =
+  const ehRetencaoOuCartao =
     desc.includes("imposto de renda") ||
     desc.includes("irrf") ||
     desc.includes("inss") ||
     desc.includes("pss") ||
     desc.includes("geap") ||
     cat.includes("tribut") ||
-    cat.includes("imposto");
+    cat.includes("imposto") ||
+    cat.includes("cart") ||
+    cat.includes("cred") ||
+    cat.includes("fatura");
+
+  return !ehRetencaoOuCartao;
+});
 
   return !ehRetencaoFolha;
 });
