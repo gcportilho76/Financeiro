@@ -227,16 +227,34 @@ return (
 
        <Card className="p-5 bg-card border-border">
   <h2 className="text-sm font-semibold text-muted-foreground mb-3">DISTRIBUIÇÃO DAS DESPESAS</h2>
-  <PizzaReceita despesas="{despesasCashFiltradas}" receitas="{calc.totalReceitas}"/>
+  <PizzaReceita 
+    receitas={calc.totalReceitas} 
+    despesas={despesasCashFiltradas} 
+  />
 </Card>
 
 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-  <MiniStat label="Receitas" sub="{calc.receitaProjetada" value="{BRL(calc.totalReceitas)}"> 0 ? `Projetada: ${BRL(calc.receitaProjetada)}` : undefined} />
-  <MiniStat ${BRL(totalDespesasCashReais)}`} label="Despesas Cash" sub="{`Pagas:" value="{BRL(totalDespesasCashReais)}"/>
-  <MiniStat label="Cartões (Soma)" value="{BRL(totalCartaoDespesas"> 0 ? totalCartaoDespesas : calc.totalCartoes)} sub={`Lançamentos: ${(data?.cartoesLancamentos ?? []).length}`} />
-  <MiniStat ${BRL(reservasGuardadas)}`} label="Reservas / Caixinhas" sub="{`Patrimônio:" value="{BRL(reservasGuardadas)}"/>
+  <MiniStat 
+    label="Receitas" 
+    value={BRL(calc.totalReceitas)} 
+    sub={calc.receitaProjetada > 0 ? `Projetada: ${BRL(calc.receitaProjetada)}` : undefined} 
+  />
+  <MiniStat 
+    label="Despesas Cash" 
+    value={BRL(totalDespesasCashReais)} 
+    sub={`Pagas: ${BRL(totalDespesasCashReais)}`} 
+  />
+  <MiniStat 
+    label="Cartões (Soma)" 
+    value={BRL(totalCartaoDespesas > 0 ? totalCartaoDespesas : calc.totalCartoes)} 
+    sub={`Lançamentos: ${(data?.cartoesLancamentos ?? []).length}`} 
+  />
+  <MiniStat 
+    label="Reservas / Caixinhas" 
+    value={BRL(reservasGuardadas)} 
+    sub={`Patrimônio: ${BRL(reservasGuardadas)}`} 
+  />
 </div>
-
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="grid grid-cols-3 md:grid-cols-10 w-full max-w-4xl h-auto">
             <TabsTrigger value="resumo">Resumo</TabsTrigger>
