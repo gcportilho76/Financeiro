@@ -306,9 +306,9 @@ return (
             <InsumosView data={data} comp={comp} onSaved={refresh} />
           </TabsContent>
 
-          <TabsContent value="consignados" className="mt-4">
-            <ConsignadosView />
-          </TabsContent>
+         <TabsContent value="consignados" className="mt-4">
+           <ConsignadosView data={data} />
+         </TabsContent>
 
           <TabsContent value="reservas" className="mt-4">
             <ReservasView data={data} comp={comp} onSaved={refresh} />
