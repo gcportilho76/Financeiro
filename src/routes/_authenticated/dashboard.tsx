@@ -225,21 +225,17 @@ return (
           />
         </div>
 
-        <Card className="p-5 bg-card border-border">
-          <h2 className="text-sm font-semibold text-muted-foreground mb-3">DISTRIBUIÇÃO DAS DESPESAS</h2>
-          <PizzaReceita 
-           receitas={calc.totalReceitas} 
-           despesas={data.despesas ?? []} 
-           despesas={despesasCashFiltradas}
-/>
-        </Card>
+       <Card className="p-5 bg-card border-border">
+  <h2 className="text-sm font-semibold text-muted-foreground mb-3">DISTRIBUIÇÃO DAS DESPESAS</h2>
+  <PizzaReceita despesas="{despesasCashFiltradas}" receitas="{calc.totalReceitas}"/>
+</Card>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <MiniStat label="Receitas" value={BRL(calc.totalReceitas)} sub={calc.receitaProjetada > 0 ? `Projeção salário base: ${BRL(calc.receitaProjetada)}` : `Recebidas: ${BRL(calc.recebidos)}`} color="success" />
-          <MiniStat label="Despesas Cash" value={BRL(totalDespesasCashReais)} sub={`Pagas: ${BRL(totalDespesasCashReais)}`} />
-          <MiniStat label="Cartões (Soma)" value={BRL(totalCartaoDespesas > 0 ? totalCartaoDespesas : somaCartoesAtivos(data?.cartoesLancamentos ?? []))} sub={`Lançamentos: ${(data?.despesas ?? []).filter((d: any) => d.categoria?.toLowerCase()?.includes("cart")).length || (data?.cartoesLancamentos ?? []).length}`} />
-          <MiniStat label="Reservas / Caixinhas" value={BRL(reservasGuardadas)} sub={`Patrimônio: ${BRL(calc.patrimonioTotal)}`} color="info" />
-        </div>
+<div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+  <MiniStat label="Receitas" sub="{calc.receitaProjetada" value="{BRL(calc.totalReceitas)}"> 0 ? `Projetada: ${BRL(calc.receitaProjetada)}` : undefined} />
+  <MiniStat ${BRL(totalDespesasCashReais)}`} label="Despesas Cash" sub="{`Pagas:" value="{BRL(totalDespesasCashReais)}"/>
+  <MiniStat label="Cartões (Soma)" value="{BRL(totalCartaoDespesas"> 0 ? totalCartaoDespesas : calc.totalCartoes)} sub={`Lançamentos: ${(data?.cartoesLancamentos ?? []).length}`} />
+  <MiniStat ${BRL(reservasGuardadas)}`} label="Reservas / Caixinhas" sub="{`Patrimônio:" value="{BRL(reservasGuardadas)}"/>
+</div>
 
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="grid grid-cols-3 md:grid-cols-10 w-full max-w-4xl h-auto">
