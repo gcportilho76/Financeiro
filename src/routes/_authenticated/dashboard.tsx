@@ -137,7 +137,7 @@ const totalCartaoDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) 
   }
   return acc;
 }, 0);
-// 1. Filtra despesas ignorando retenções da folha (IRRF, PSS, GEAP) E faturas de cartão
+
 const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
   const desc = String(d.descricao || "").toLowerCase();
   const cat = String(
@@ -159,19 +159,13 @@ const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
   return !ehRetencaoOuCartao;
 });
 
-// 2. Soma apenas o cash/pix puro
 const totalDespesasCashReais = despesasCashFiltradas.reduce(
   (acc: number, d: any) => acc + (Number(d.valor) || 0),
   0
 );
-// Total de despesas cash reais (sem tributos de folha)
-const totalDespesasCashReais = despesasCashFiltradas.reduce(
-  (acc: number, d: any) => acc + (Number(d.valor) || 0),
-  0
-);
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Toaster richColors theme="dark" position="top-right" />
+
+return (
+  <div className="min-h-screen bg-background text-foreground">
 
       <header className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-40 no-print">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
