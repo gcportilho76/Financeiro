@@ -164,10 +164,6 @@ const totalDespesasCashReais = despesasCashFiltradas.reduce(
   (acc: number, d: any) => acc + (Number(d.valor) || 0),
   0
 );
-
-  return !ehRetencaoFolha;
-});
-
 // Total de despesas cash reais (sem tributos de folha)
 const totalDespesasCashReais = despesasCashFiltradas.reduce(
   (acc: number, d: any) => acc + (Number(d.valor) || 0),
