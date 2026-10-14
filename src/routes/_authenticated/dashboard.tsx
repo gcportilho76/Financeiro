@@ -150,6 +150,8 @@ const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
     desc.includes("inss") ||
     desc.includes("pss") ||
     desc.includes("geap") ||
+    desc.includes("santander") ||
+    desc.includes("fatura") ||
     cat.includes("tribut") ||
     cat.includes("imposto") ||
     cat.includes("cart") ||
