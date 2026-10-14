@@ -137,6 +137,30 @@ const totalCartaoDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) 
   }
   return acc;
 }, 0);
+// Filtra despesas manuais ignorando os tributos/descontos já retidos no contracheque
+const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
+  const desc = String(d.descricao || "").toLowerCase();
+  const cat = String(
+    typeof d.categoria === "object" ? d.categoria?.nome : (d.categoria || d.categoria_nome || "")
+  ).toLowerCase();
+
+  const ehRetencaoFolha =
+    desc.includes("imposto de renda") ||
+    desc.includes("irrf") ||
+    desc.includes("inss") ||
+    desc.includes("pss") ||
+    desc.includes("geap") ||
+    cat.includes("tribut") ||
+    cat.includes("imposto");
+
+  return !ehRetencaoFolha;
+});
+
+// Total de despesas cash reais (sem tributos de folha)
+const totalDespesasCashReais = despesasCashFiltradas.reduce(
+  (acc: number, d: any) => acc + (Number(d.valor) || 0),
+  0
+);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Toaster richColors theme="dark" position="top-right" />
@@ -204,14 +228,13 @@ const totalCartaoDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) 
           <PizzaReceita 
            receitas={calc.totalReceitas} 
            despesas={data.despesas ?? []} 
-           cartoes={data.cartoesLancamentos ?? []} 
-           resultado={calc.resultadoMes} 
+           despesas={despesasCashFiltradas}
 />
         </Card>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MiniStat label="Receitas" value={BRL(calc.totalReceitas)} sub={calc.receitaProjetada > 0 ? `Projeção salário base: ${BRL(calc.receitaProjetada)}` : `Recebidas: ${BRL(calc.recebidos)}`} color="success" />
-          <MiniStat label="Despesas Cash" value={BRL(calc.totalDespesasCash)} sub={`Pagas: ${BRL(calc.despPagas)}`} color="warning" />
+          <MiniStat label="Despesas Cash" value={BRL(totalDespesasCashReais)} sub={`Pagas: ${BRL(totalDespesasCashReais)}`} />
           <MiniStat label="Cartões (Soma)" value={BRL(totalCartaoDespesas > 0 ? totalCartaoDespesas : somaCartoesAtivos(data?.cartoesLancamentos ?? []))} sub={`Lançamentos: ${(data?.despesas ?? []).filter((d: any) => d.categoria?.toLowerCase()?.includes("cart")).length || (data?.cartoesLancamentos ?? []).length}`} />
           <MiniStat label="Reservas / Caixinhas" value={BRL(reservasGuardadas)} sub={`Patrimônio: ${BRL(calc.patrimonioTotal)}`} color="info" />
         </div>
