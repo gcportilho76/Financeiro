@@ -1,11 +1,10 @@
 import { useMemo, useState, useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
 } from "recharts";
-import { Wallet, TrendingUp, TriangleAlert as AlertTriangle, Calendar, Printer, Download, Plus, CreditCard as Edit2, Trash2, Copy, ChevronLeft, ChevronRight, LogOut, CreditCard, Receipt, Banknote, Landmark, Trophy, Settings, Target, Package, Bell, ChevronDown, ChevronUp, PiggyBank, ArrowUpFromLine, Sparkles } from "lucide-react";
+import { Wallet, TrendingUp, TriangleAlert as AlertTriangle, Calendar, Printer, Plus, CreditCard as Edit2, Trash2, Copy, ChevronLeft, ChevronRight, LogOut, CreditCard, Receipt, Banknote, Trophy, Settings, Target, Package, Bell, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { DatePicker } from "@/components/date-picker";
 import { ComprometidosPanel } from "@/components/comprometidos-panel";
@@ -16,8 +15,8 @@ import { CartoesParceladosView } from "@/components/CartoesParceladosView";
 import { fetchAll } from "@/lib/queries";
 
 import {
-  BRL, calcular, competenciaAtual, diasNoMes, formatCompetencia,
-  hojeISO, jurosSalvosTotais, proxCompetencia, somaCartoesAtivos,
+  BRL, calcular, competenciaAtual, formatCompetencia,
+  hojeISO, jurosSalvosTotais, proxCompetencia,
 } from "@/lib/finance";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -32,9 +31,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { Toaster } from "@/components/ui/sonner";
 import { gerarPDF } from "@/lib/pdf";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -121,67 +118,58 @@ export function Dashboard() {
       setComp(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`);
     }
   }
-  // --- ADICIONE ESTAS LINHAS DE DIAGNÓSTICO ---
-  console.log("=== DIAGNÓSTICO DE DADOS ===");
-  console.log("despesas:", data?.despesas);
-  console.log("cartoesLancamentos:", data?.cartoesLancamentos);
-  console.log("cartoes:", data?.cartoes);
-  console.log("=============================");
-  // ---------------------------------------------
 
-const totalCartaoDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) => {
-  const cat = String(
-    typeof d.categoria === "object" ? d.categoria?.nome : (d.categoria || d.categoria_nome || d.descricao || "")
-  ).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const totalCartaoDespesas = (data?.despesas ?? []).reduce((acc: number, d: any) => {
+    const cat = String(
+      typeof d.categoria === "object" ? d.categoria?.nome : (d.categoria || d.categoria_nome || d.descricao || "")
+    ).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-  if (cat.includes("cart") || cat.includes("cred") || cat.includes("fatura")) {
-    return acc + (Number(d.valor) || 0);
-  }
-  return acc;
-}, 0);
+    if (cat.includes("cart") || cat.includes("cred") || cat.includes("fatura")) {
+      return acc + (Number(d.valor) || 0);
+    }
+    return acc;
+  }, 0);
 
-const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
-  const valor = Number(d.valor) || 0;
-  const desc = String(d.descricao || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+  const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
+    const valor = Number(d.valor) || 0;
+    const desc = String(d.descricao || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
 
-  const cat = String(
-    typeof d.categoria === "object" ? d.categoria?.nome : (d.categoria || d.categoria_nome || "")
-  )
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+    const cat = String(
+      typeof d.categoria === "object" ? d.categoria?.nome : (d.categoria || d.categoria_nome || "")
+    )
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
 
-  // Exclui tributos de folha E a fatura do cartão (por nome, categoria ou valor exato da fatura)
-  const ehRetencaoOuCartao =
-    desc.includes("imposto de renda") ||
-    desc.includes("irrf") ||
-    desc.includes("inss") ||
-    desc.includes("pss") ||
-    desc.includes("geap") ||
-    desc.includes("santander") ||
-    desc.includes("fatura") ||
-    desc.includes("cartao") ||
-    cat.includes("tribut") ||
-    cat.includes("imposto") ||
-    cat.includes("cart") ||
-    cat.includes("cred") ||
-    cat.includes("fatura") ||
-    valor === 7123.82; // Trava direta para o lançamento da fatura atual
+    const ehRetencaoOuCartao =
+      desc.includes("imposto de renda") ||
+      desc.includes("irrf") ||
+      desc.includes("inss") ||
+      desc.includes("pss") ||
+      desc.includes("geap") ||
+      desc.includes("santander") ||
+      desc.includes("fatura") ||
+      desc.includes("cartao") ||
+      cat.includes("tribut") ||
+      cat.includes("imposto") ||
+      cat.includes("cart") ||
+      cat.includes("cred") ||
+      cat.includes("fatura") ||
+      valor === 7123.82;
 
-  return !ehRetencaoOuCartao;
-});
+    return !ehRetencaoOuCartao;
+  });
 
-const totalDespesasCashReais = despesasCashFiltradas.reduce(
-  (acc: number, d: any) => acc + (Number(d.valor) || 0),
-  0
-);
+  const totalDespesasCashReais = despesasCashFiltradas.reduce(
+    (acc: number, d: any) => acc + (Number(d.valor) || 0),
+    0
+  );
 
-return (
-  <div className="min-h-screen bg-background text-foreground">
-
+  return (
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-40 no-print">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
@@ -240,36 +228,37 @@ return (
           />
         </div>
 
-       <Card className="p-5 bg-card border-border">
-  <h2 className="text-sm font-semibold text-muted-foreground mb-3">DISTRIBUIÇÃO DAS DESPESAS</h2>
-  <PizzaReceita 
-    receitas={calc.totalReceitas} 
-    despesas={despesasCashFiltradas} 
-  />
-</Card>
+        <Card className="p-5 bg-card border-border">
+          <h2 className="text-sm font-semibold text-muted-foreground mb-3">DISTRIBUIÇÃO DAS DESPESAS</h2>
+          <PizzaReceita 
+            receitas={calc.totalReceitas} 
+            despesas={despesasCashFiltradas} 
+          />
+        </Card>
 
-<div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-  <MiniStat 
-    label="Receitas" 
-    value={BRL(calc.totalReceitas)} 
-    sub={calc.receitaProjetada > 0 ? `Projetada: ${BRL(calc.receitaProjetada)}` : undefined} 
-  />
-  <MiniStat 
-    label="Despesas Cash" 
-    value={BRL(totalDespesasCashReais)} 
-    sub={`Pagas: ${BRL(totalDespesasCashReais)}`} 
-  />
-  <MiniStat 
-    label="Cartões (Soma)" 
-    value={BRL(totalCartaoDespesas > 0 ? totalCartaoDespesas : calc.totalCartoes)} 
-    sub={`Lançamentos: ${(data?.cartoesLancamentos ?? []).length}`} 
-  />
-  <MiniStat 
-    label="Reservas / Caixinhas" 
-    value={BRL(reservasGuardadas)} 
-    sub={`Patrimônio: ${BRL(reservasGuardadas)}`} 
-  />
-</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <MiniStat 
+            label="Receitas" 
+            value={BRL(calc.totalReceitas)} 
+            sub={calc.receitaProjetada > 0 ? `Projetada: ${BRL(calc.receitaProjetada)}` : undefined} 
+          />
+          <MiniStat 
+            label="Despesas Cash" 
+            value={BRL(totalDespesasCashReais)} 
+            sub={`Pagas: ${BRL(totalDespesasCashReais)}`} 
+          />
+          <MiniStat 
+            label="Cartões (Soma)" 
+            value={BRL(totalCartaoDespesas > 0 ? totalCartaoDespesas : calc.totalCartoes)} 
+            sub={`Lançamentos: ${(data?.cartoesLancamentos ?? []).length}`} 
+          />
+          <MiniStat 
+            label="Reservas / Caixinhas" 
+            value={BRL(reservasGuardadas)} 
+            sub={`Patrimônio: ${BRL(reservasGuardadas)}`} 
+          />
+        </div>
+
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="grid grid-cols-3 md:grid-cols-10 w-full max-w-4xl h-auto">
             <TabsTrigger value="resumo">Resumo</TabsTrigger>
@@ -308,9 +297,9 @@ return (
             <InsumosView data={data} comp={comp} onSaved={refresh} />
           </TabsContent>
 
-         <TabsContent value="consignados" className="mt-4">
-           <ConsignadosView data={data} onSaved={refresh} />
-         </TabsContent>
+          <TabsContent value="consignados" className="mt-4">
+            <ConsignadosView data={data} onSaved={refresh} />
+          </TabsContent>
 
           <TabsContent value="reservas" className="mt-4">
             <ReservasView data={data} comp={comp} onSaved={refresh} />
@@ -321,20 +310,21 @@ return (
           </TabsContent>
 
           <TabsContent value="importar" className="mt-4">
-           <ImportExtratoPanel 
-            comp={comp} 
-            onSaved={refresh} 
-            cartoes={data?.cartoesRegistry ?? data?.cartoes ?? []} 
-            contas={data?.contas ?? []} 
-          />
-         </TabsContent>
-         </Tabs>
+            <ImportExtratoPanel 
+              comp={comp} 
+              onSaved={refresh} 
+              cartoes={data?.cartoesRegistry ?? data?.cartoes ?? []} 
+              contas={data?.contas ?? []} 
+            />
+          </TabsContent>
+        </Tabs>
 
         <ConquistasPanel eventos={data.eventos} contratos={data.contratos} comp={comp} jurosTotais={jurosTotais} />
       </main>
     </div>
   );
 }
+
 function ConquistasPanel({ eventos, contratos, comp, jurosTotais }: any) {
   const jurosMes = (eventos ?? [])
     .filter((e: any) => e.tipo === "amortizacao" && e.competencia === comp)
@@ -489,7 +479,6 @@ function PizzaReceita({ receitas, despesas, cartoes, resultado }: any) {
     </div>
   );
 }
-
 function ResumoView({ calc, data, profile, comp, onSaved }: any) {
   const saldoMes = Number(data.saldoInicialMes ?? 0);
   const [saldo, setSaldo] = useState(String(saldoMes));
@@ -758,7 +747,6 @@ function ReceitasView({ data, comp, onSaved }: any) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [sel, setSel] = useState<Record<string, boolean>>({});
-  const allIds = (data.receitas ?? []).map((r: any) => r.id);
 
   async function clonar(r: any) {
     const { id, created_at, ...rest } = r;
@@ -916,7 +904,7 @@ function DespesasView({ data, comp, onSaved }: any) {
   );
 }
 
-function DespesaForm({ open, onOpenChange, comp, editing, registry, onSaved }: any) {
+function DespesaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
   const [form, setForm] = useState({
     descricao: "",
     valor: "",
@@ -1019,66 +1007,6 @@ function DespesaForm({ open, onOpenChange, comp, editing, registry, onSaved }: a
     </Dialog>
   );
 }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{editing ? "Editar" : "Nova"} Despesa</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Descrição</Label>
-            <Input 
-              value={form.descricao} 
-              onChange={(e) => setForm({ ...form, descricao: e.target.value })} 
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Valor</Label>
-              <Input 
-                type="number" 
-                step="0.01" 
-                value={form.valor} 
-                onChange={(e) => setForm({ ...form, valor: e.target.value })} 
-              />
-            </div>
-            <div>
-              <Label>Vencimento</Label>
-              <DatePicker 
-                value={form.data_venc} 
-                onChange={(v) => setForm({ ...form, data_venc: v })} 
-              />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label>Categoria</Label>
-            <Select
-              value={form.categoria || "Outros"}
-              onValueChange={(v) => setForm({ ...form, categoria: v })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione a categoria" />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORIAS_DESPESA.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={salvar}>Salvar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /* ───── CARTÕES ───── */
 function CartoesView({ data, comp, onSaved }: any) {
   const [open, setOpen] = useState(false);
@@ -1125,7 +1053,10 @@ function CartoesView({ data, comp, onSaved }: any) {
     return m;
   }, [cartoesLancamentos]);
 
-  const totalAtivos = somaCartoesAtivos(cartoesLancamentos);
+  const totalAtivos = (cartoesLancamentos ?? []).reduce(
+    (acc: number, c: any) => acc + (c.ativo !== false ? Number(c.valor) || 0 : 0),
+    0
+  );
 
   return (
     <div className="space-y-4">
@@ -1326,14 +1257,12 @@ function CartaoLancamentoForm({ open, onOpenChange, comp, editing, registry, onS
     if (!descricao) return toast.error("Informe a descrição");
     const { data: u } = await supabase.auth.getUser();
 
-    // Lógica do dia de fechamento
     const cartaoReg = (registry ?? []).find((r: any) => r.nome === cartao);
     const diaFechamento = Number(cartaoReg?.dia_fechamento ?? 31);
     const diaCompraNum = dataCompra ? Number(dataCompra.slice(8, 10)) : 1;
 
     let competenciaFinal = comp;
 
-    // Se o dia da compra for MAIOR que o dia do fechamento, vai para o mês seguinte
     if (diaCompraNum > diaFechamento) {
       competenciaFinal = proxCompetencia(comp);
       toast.info(`Compra efetuada após o fechamento (dia ${diaFechamento}). Lançada na fatura do mês seguinte (${competenciaFinal.slice(0, 7)}).`);
@@ -1398,7 +1327,6 @@ function CartaoLancamentoForm({ open, onOpenChange, comp, editing, registry, onS
     </Dialog>
   );
 }
-
 
 /* ───── RESERVAS ───── */
 function ReservasView({ data, comp, onSaved }: any) {
