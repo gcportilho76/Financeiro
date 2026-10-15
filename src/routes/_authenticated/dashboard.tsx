@@ -131,37 +131,29 @@ export function Dashboard() {
   }, 0);
 
   const despesasCashFiltradas = (data?.despesas ?? []).filter((d: any) => {
-    const valor = Number(d.valor) || 0;
-    const desc = String(d.descricao || "")
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
+  const valor = Number(d.valor) || 0;
+  const desc = String(d.descricao || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
-    const cat = String(
-      typeof d.categoria === "object" ? d.categoria?.nome : (d.categoria || d.categoria_nome || "")
-    )
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
+  const cat = String(
+    typeof d.categoria === "object" ? d.categoria?.nome : (d.categoria || d.categoria_nome || "")
+  )
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
-    const ehRetencaoOuCartao =
-      desc.includes("imposto de renda") ||
-      desc.includes("irrf") ||
-      desc.includes("inss") ||
-      desc.includes("pss") ||
-      desc.includes("geap") ||
-      desc.includes("santander") ||
-      desc.includes("fatura") ||
-      desc.includes("cartao") ||
-      cat.includes("tribut") ||
-      cat.includes("imposto") ||
-      cat.includes("cart") ||
-      cat.includes("cred") ||
-      cat.includes("fatura") ||
-      valor === 7123.82;
+  const ehRetencaoFolhaOuFaturaConsolidada =
+    desc.includes("imposto de renda no contracheque") ||
+    desc.includes("inss folha") ||
+    desc.includes("fatura cartao") ||
+    cat.includes("cartao") ||
+    cat.includes("fatura") ||
+    valor === 7123.82;
 
-    return !ehRetencaoOuCartao;
-  });
+  return !ehRetencaoFolhaOuFaturaConsolidada;
+});
 
   const totalDespesasCashReais = despesasCashFiltradas.reduce(
     (acc: number, d: any) => acc + (Number(d.valor) || 0),
