@@ -935,36 +935,49 @@ function DespesaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader><DialogTitle>{editing ? "Editar" : "Nova"} Despesa</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{editing ? "Editar" : "Nova"} Despesa</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3">
-          <div><Label>Descrição</Label><Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} /></div>
+          <div>
+            <Label>Descrição</Label>
+            <Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label>Valor</Label><Input type="number" step="0.01" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} /></div>
-            <div><Label>Vencimento</Label><DatePicker value={form.data_venc} onChange={(v) => setForm({ ...form, data_venc: v })} /></div>
+            <div>
+              <Label>Valor</Label>
+              <Input type="number" step="0.01" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} />
+            </div>
+            <div>
+              <Label>Vencimento</Label>
+              <DatePicker value={form.data_venc} onChange={(v) => setForm({ ...form, data_venc: v })} />
+            </div>
+          </div>
           <div className="space-y-1">
-  <Label>Categoria</Label>
-  <Select 
-    value={form.categoria || "Outros"} 
-    onValueChange={(v) => setForm({ ...form, categoria: v })}
-  >
-    <SelectTrigger>
-      <SelectValue placeholder="Selecione a categoria" />
-    </SelectTrigger>
-    <SelectContent>
-      {CATEGORIAS_DESPESA.map((cat) => (
-        <SelectItem key={cat} value={cat}>
-          {cat}
-        </SelectItem>
-      ))}
-    </SelectContent>
-  </Select>
-</div>
+            <Label>Categoria</Label>
+            <Select
+              value={form.categoria || "Outros"}
+              onValueChange={(v) => setForm({ ...form, categoria: v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a categoria" />
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORIAS_DESPESA.map((cat) => (
+                  <SelectItem key={cat} value={cat}>
+                    {cat}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <DialogFooter><Button onClick={salvar}>Salvar</Button></DialogFooter>
+        <DialogFooter>
+          <Button onClick={salvar}>Salvar</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
-}
 
 /* ───── CARTÕES ───── */
 function CartoesView({ data, comp, onSaved }: any) {
