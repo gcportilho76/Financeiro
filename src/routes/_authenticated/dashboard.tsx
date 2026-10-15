@@ -915,21 +915,49 @@ function DespesasView({ data, comp, onSaved }: any) {
   );
 }
 
-function DespesaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
-  const empty = { descricao: "", valor: "", data_venc: hojeISO(), categoria: "Outros", status: "PENDENTE", tipo: "variavel" };
-  const [form, setForm] = useState<any>(editing ?? empty);
-  useEffect(() => { setForm(editing ?? empty); }, [editing, open]);
+function DespesaForm({ open, onOpenChange, comp, editing, registry, onSaved }: any) {
+  const [form, setForm] = useState({
+    descricao: "",
+    valor: "",
+    data_venc: hojeISO(),
+    categoria: "Outros",
+  });
+
+  useEffect(() => {
+    if (editing) {
+      setForm({
+        descricao: editing.descricao || "",
+        valor: String(editing.valor || ""),
+        data_venc: editing.data_venc || hojeISO(),
+        categoria: editing.categoria || "Outros",
+      });
+    } else {
+      setForm({
+        descricao: "",
+        valor: "",
+        data_venc: hojeISO(),
+        categoria: "Outros",
+      });
+    }
+  }, [editing, open]);
 
   async function salvar() {
     const { data: u } = await supabase.auth.getUser();
-    const payload = { ...form, valor: Number(form.valor), user_id: u.user!.id, competencia: comp };
-    delete (payload as any).created_at;
+    const payload = { 
+      ...form, 
+      valor: Number(form.valor), 
+      user_id: u.user!.id, 
+      competencia: comp 
+    };
+
     if (editing?.id) {
       await supabase.from("despesas").update(payload).eq("id", editing.id);
     } else {
-      await supabase.from("despesas").insert(payload);
+      await supabase.from("despesas").insert([payload]);
     }
-    toast.success("Salvo"); onSaved();
+
+    toast.success("Salvo");
+    onSaved();
   }
 
   return (
@@ -941,16 +969,27 @@ function DespesaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
         <div className="space-y-3">
           <div>
             <Label>Descrição</Label>
-            <Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
+            <Input 
+              value={form.descricao} 
+              onChange={(e) => setForm({ ...form, descricao: e.target.value })} 
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Valor</Label>
-              <Input type="number" step="0.01" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} />
+              <Input 
+                type="number" 
+                step="0.01" 
+                value={form.valor} 
+                onChange={(e) => setForm({ ...form, valor: e.target.value })} 
+              />
             </div>
             <div>
               <Label>Vencimento</Label>
-              <DatePicker value={form.data_venc} onChange={(v) => setForm({ ...form, data_venc: v })} />
+              <DatePicker 
+                value={form.data_venc} 
+                onChange={(v) => setForm({ ...form, data_venc: v })} 
+              />
             </div>
           </div>
           <div className="space-y-1">
@@ -978,6 +1017,7 @@ function DespesaForm({ open, onOpenChange, comp, editing, onSaved }: any) {
       </DialogContent>
     </Dialog>
   );
+}
 
 /* ───── CARTÕES ───── */
 function CartoesView({ data, comp, onSaved }: any) {
