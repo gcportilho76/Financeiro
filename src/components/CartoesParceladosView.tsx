@@ -21,18 +21,38 @@ interface CompraParceladaItem {
 
 interface CartoesParceladosViewProps {
   data?: any;
-  comp?: string; // Formato YYYY-MM ou YYYY-MM-DD
+  comp?: string;
   onSaved?: () => void;
 }
 
+const LOCAL_STORAGE_KEY = "gute_cartoes_parcelados_v4";
+
 export function CartoesParceladosView({ data, comp, onSaved }: CartoesParceladosViewProps) {
-  // Puxa do Supabase se disponível, com fallback para os lançamentos da props
-  const comprasIniciais = data?.cartoesLancamentos ?? data?.compras_parceladas ?? [];
-  const [compras, setCompras] = useState<CompraParceladaItem[]>(comprasIniciais);
+  const mesAtualStr = (comp || "2026-10").slice(0, 7);
+
+  const [compras, setCompras] = useState<CompraParceladaItem[]>(() => {
+    try {
+      const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (local) return JSON.parse(local);
+    } catch (e) {
+      console.error(e);
+    }
+    return data?.cartoesLancamentos ?? data?.compras_parceladas ?? [];
+  });
 
   useEffect(() => {
-    if (data?.cartoesLancamentos) {
-      setCompras(data.cartoesLancamentos);
+    if (data?.cartoesLancamentos && data.cartoesLancamentos.length > 0) {
+      const convertidos = data.cartoesLancamentos.map((c: any) => ({
+        id: String(c.id),
+        descricao: c.descricao || "",
+        cartao: c.cartao || "Cartão",
+        valor_parcela: Number(c.valor_parcela || c.valor) || 0,
+        parcela_atual: Number(c.parcela_atual || c.parcela_num) || 1,
+        total_parcelas: Number(c.total_parcelas || c.parcela_total) || 1,
+        mes_inicio: (c.mes_inicio || c.competencia || mesAtualStr).slice(0, 7),
+      }));
+      setCompras(convertidos);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(convertidos));
     }
   }, [data]);
 
@@ -58,73 +78,97 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
       setDescricao("");
       setCartao("");
       setValorParcela("");
-      setTotalParcelas("12");
+      setTotalParcelas("3");
       setParcelaAtual("1");
     }
     setIsModalOpen(true);
   };
 
   const handleSave = async () => {
-    if (!descricao || !valorParcela || !totalParcelas || !parcelaAtual) {
-      toast.error("Preencha todos os campos obrigatórios");
+    if (!descricao.trim()) {
+      toast.error("Informe a descrição da compra");
+      return;
+    }
+    if (!valorParcela || isNaN(parseFloat(valorParcela.replace(",", ".")))) {
+      toast.error("Informe um valor válido");
+      return;
+    }
+    if (!totalParcelas || !parcelaAtual) {
+      toast.error("Preencha todas as parcelas");
       return;
     }
 
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) {
-      toast.error("Usuário não autenticado");
-      return;
-    }
+    const vParc = parseFloat(valorParcela.replace(",", "."));
+    const pAtual = parseInt(parcelaAtual, 10);
+    const pTotal = parseInt(totalParcelas, 10);
 
-    const mesAtualRef = (comp || "2026-10").slice(0, 7);
-
-    const payload = {
-      user_id: u.user.id,
-      descricao,
-      cartao: cartao || "Cartão",
-      valor: parseFloat(valorParcela.replace(",", ".")),
-      valor_parcela: parseFloat(valorParcela.replace(",", ".")),
-      parcela_num: parseInt(parcelaAtual, 10),
-      parcela_total: parseInt(totalParcelas, 10),
-      parcela_atual: parseInt(parcelaAtual, 10),
-      total_parcelas: parseInt(totalParcelas, 10),
-      competencia: mesAtualRef,
-      mes_inicio: mesAtualRef,
-      status: "PENDENTE",
-      ativo: true,
+    const novoItem: CompraParceladaItem = {
+      id: editingItem?.id || "parcela_" + Date.now(),
+      descricao: descricao.trim(),
+      cartao: cartao.trim() || "Cartão",
+      valor_parcela: vParc,
+      parcela_atual: pAtual,
+      total_parcelas: pTotal,
+      mes_inicio: editingItem?.mes_inicio || mesAtualStr,
     };
 
-    let error;
-    if (editingItem?.id) {
-      const res = await supabase.from("cartoes_lancamentos").update(payload).eq("id", editingItem.id);
-      error = res.error;
+    let listaAtualizada: CompraParceladaItem[];
+    if (editingItem) {
+      listaAtualizada = compras.map((c) => (c.id === editingItem.id ? novoItem : c));
     } else {
-      const res = await supabase.from("cartoes_lancamentos").insert(payload);
-      error = res.error;
+      listaAtualizada = [...compras, novoItem];
     }
 
-    if (error) {
-      toast.error("Erro ao salvar no banco: " + error.message);
-    } else {
-      toast.success(editingItem ? "Compra atualizada no Supabase!" : "Compra cadastrada no Supabase!");
-      setIsModalOpen(false);
-      if (onSaved) onSaved();
+    setCompras(listaAtualizada);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(listaAtualizada));
+
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      if (u?.user) {
+        const payloadSupabase = {
+          user_id: u.user.id,
+          descricao: novoItem.descricao,
+          cartao: novoItem.cartao,
+          valor: novoItem.valor_parcela,
+          parcela_num: novoItem.parcela_atual,
+          parcela_total: novoItem.total_parcelas,
+          competencia: novoItem.mes_inicio,
+          status: "PENDENTE",
+          ativo: true,
+        };
+
+        if (editingItem?.id && !editingItem.id.startsWith("parcela_")) {
+          await supabase.from("cartoes_lancamentos").update(payloadSupabase).eq("id", editingItem.id);
+        } else {
+          await supabase.from("cartoes_lancamentos").insert(payloadSupabase);
+        }
+      }
+    } catch (err) {
+      console.warn("Aviso ao salvar no Supabase, mantido no localStorage:", err);
     }
+
+    toast.success("Salvo com sucesso!");
+    setIsModalOpen(false);
+    if (onSaved) onSaved();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Deseja realmente remover esta compra parcelada?")) return;
-    const { error } = await supabase.from("cartoes_lancamentos").delete().eq("id", id);
-    if (error) {
-      toast.error("Erro ao remover: " + error.message);
-    } else {
-      toast.success("Compra removida!");
-      if (onSaved) onSaved();
-    }
-  };
+    const listaAtualizada = compras.filter((item) => item.id !== id);
+    setCompras(listaAtualizada);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(listaAtualizada));
 
-  // Normaliza o mês exibido no cabeçalho (ex: "2027-02")
-  const mesAtualStr = (comp || "2026-10").slice(0, 7);
+    if (!id.startsWith("parcela_")) {
+      try {
+        await supabase.from("cartoes_lancamentos").delete().eq("id", id);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    toast.success("Compra removida!");
+    if (onSaved) onSaved();
+  };
 
   const compParaMeses = (c: string) => {
     const [ano, mes] = c.split("-").map(Number);
@@ -134,25 +178,23 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
 
   const mesVisualizadoInt = compParaMeses(mesAtualStr);
 
-  const comprasProcessadas = compras.map((item: any) => {
-    const pInicial = Number(item.parcela_atual || item.parcela_num) || 1;
-    const pTotal = Number(item.total_parcelas || item.parcela_total) || 1;
-    const mesInicioStr = (item.mes_inicio || item.competencia || "2026-10").slice(0, 7);
+  const comprasProcessadas = compras.map((item) => {
+    const pInicial = Number(item.parcela_atual) || 1;
+    const pTotal = Number(item.total_parcelas) || 1;
+    const mesInicioStr = (item.mes_inicio || mesAtualStr).slice(0, 7);
 
     const mesInicioInt = compParaMeses(mesInicioStr);
     const mesesDecorridos = mesVisualizadoInt - mesInicioInt;
     const pCalculada = pInicial + mesesDecorridos;
 
-    // A parcela está ATIVA APENAS se a parcela calculada estiver no intervalo [1, pTotal]
     const isAtiva = pCalculada >= 1 && pCalculada <= pTotal;
     const isQuitada = pCalculada > pTotal;
 
-    const valParc = Number(item.valor_parcela || item.valor) || 0;
+    const valParc = Number(item.valor_parcela) || 0;
     const valorParcela = isAtiva ? valParc : 0;
     const parcelasRestantes = Math.max(0, pTotal - pCalculada);
     const progresso = Math.min(100, Math.round((Math.max(1, Math.min(pCalculada, pTotal)) / pTotal) * 100));
 
-    // Data exata em que a última parcela será debitada
     const [anoBase, mesBase] = mesInicioStr.split("-").map(Number);
     const dataTermino = new Date(anoBase || 2026, (mesBase || 10) - 1 + (pTotal - pInicial), 1);
     const mesExtenso = dataTermino.toLocaleDateString("pt-BR", { month: "long" });
@@ -285,12 +327,12 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
             </div>
             <div className="space-y-2">
               <Label>Cartão Utilizado</Label>
-              <Input value={cartao} onChange={(e) => setCartao(e.target.value)} placeholder="Ex: Nubank, Itaú, XP..." />
+              <Input value={cartao} onChange={(e) => setCartao(e.target.value)} placeholder="Ex: Nubank, Santander..." />
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label>Valor Parcela (R$)</Label>
-                <Input value={valorParcela} onChange={(e) => setValorParcela(e.target.value)} placeholder="150,00" />
+                <Input value={valorParcela} onChange={(e) => setValorParcela(e.target.value)} placeholder="100" />
               </div>
               <div className="space-y-2">
                 <Label>Parcela Atual</Label>
@@ -298,7 +340,7 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
               </div>
               <div className="space-y-2">
                 <Label>Total Parcelas</Label>
-                <Input value={totalParcelas} onChange={(e) => setTotalParcelas(e.target.value)} placeholder="10" />
+                <Input value={totalParcelas} onChange={(e) => setTotalParcelas(e.target.value)} placeholder="3" />
               </div>
             </div>
           </div>
