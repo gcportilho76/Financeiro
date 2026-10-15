@@ -90,7 +90,14 @@ export function gerarPDF({
   // ─── Gráfico de pizza (Distribuição da Receita) ───
   const grupos: Record<string, number> = {};
   for (const d of despCash) {
-    const cat = (d.categoria && String(d.categoria).trim()) || "Outros";
+    const desc = String(d.descricao || "").toLowerCase().trim();
+    let cat = (d.categoria && String(d.categoria).trim()) || "Outros";
+
+    // Reclassificação automática de impostos retidos/pagos que estejam marcados como "Outros"
+    if (cat === "Outros" && (desc.includes("imposto") || desc.includes("inss") || desc.includes("irpf") || desc.includes("receita federal"))) {
+      cat = "Impostos";
+    }
+
     grupos[cat] = (grupos[cat] ?? 0) + Number(d.valor || 0);
   }
 
