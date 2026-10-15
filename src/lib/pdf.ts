@@ -3,7 +3,11 @@ import autoTable from "jspdf-autotable";
 import { BRL, formatCompetencia } from "./finance";
 
 // Paleta para fatias da pizza (alinhada com o dashboard)
-const PALETA = ["#3b82f6","#f97316","#a855f7","#eab308","#06b6d4","#ef4444","#ec4899","#0ea5e9","#d946ef","#f59e0b","#6366f1","#dc2626","#22c55e"];
+const PALETA = [
+  "#3b82f6", "#f97316", "#a855f7", "#eab308", "#06b6d4",
+  "#ef4444", "#ec4899", "#0ea5e9", "#d946ef", "#f59e0b",
+  "#6366f1", "#dc2626", "#22c55e"
+];
 
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
@@ -25,7 +29,6 @@ function desenharPizza(doc: jsPDF, cx: number, cy: number, r: number, fatias: { 
     const [R, G, B] = hexToRgb(PALETA[i % PALETA.length]);
     doc.setFillColor(R, G, B);
     doc.setDrawColor(R, G, B);
-    // Aproximação por polígono
     (doc as any).lines(
       pts.slice(1).map((p, idx) => [p[0] - pts[idx][0], p[1] - pts[idx][1]]),
       pts[0][0], pts[0][1], [1, 1], "F", true
@@ -35,11 +38,44 @@ function desenharPizza(doc: jsPDF, cx: number, cy: number, r: number, fatias: { 
 }
 
 export function gerarPDF({
-  comp, profile, receitas, despesas, cartoes, contratos, insumos = [], eventos = [], calc,
+  comp, profile, receitas = [], despesas = [], cartoes = [], contratos = [], insumos = [], eventos = [], calc = {},
 }: any) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const margin = 14;
   let y = margin;
+
+  // ─── Higienização e Separação do Cartão vs. Despesas em Dinheiro (Cash) ───
+  const despesasCartaoLançadas = (despesas || []).filter((d: any) => {
+    const cat = String(d.categoria || "").toLowerCase().trim();
+    const desc = String(d.descricao || "").toLowerCase().trim();
+    return cat === "cartão" || cat === "cartao" || desc.includes("fatura");
+  });
+
+  // Apenas despesas reais em dinheiro/PIX
+  const despCash = (despesas || []).filter((d: any) => 
+    d.tipo !== "consignado" && d.tipo !== "amortizacao" && !despesasCartaoLançadas.some((c: any) => c.id === d.id)
+  );
+
+  // Totais Recalculados para o Relatório
+  const totCartoesLançados = despesasCartaoLançadas.reduce((s: number, d: any) => s + Number(d.valor || 0), 0);
+  const totCartoesAtivos = (cartoes || [])
+    .filter((c: any) => c.ativo !== false)
+    .reduce((s: number, c: any) => s + Number(c.valor || 0), 0);
+
+  const totalCartoesVal = totCartoesLançados > 0 ? totCartoesLançados : totCartoesAtivos;
+  const totalDespesasCashVal = despCash.reduce((s: number, d: any) => s + Number(d.valor || 0), 0);
+
+  // Consolidação segura de indicadores
+  const saldoInicial = Number(profile?.saldo_inicial || 0);
+  const recRecebidas = calc?.recebidos ?? receitas.filter((r: any) => r.status === "RECEBIDO").reduce((s: number, r: any) => s + Number(r.valor || 0), 0);
+  const recPrevistas = calc?.previstos ?? receitas.filter((r: any) => r.status !== "RECEBIDO").reduce((s: number, r: any) => s + Number(r.valor || 0), 0);
+  const totalReceitasVal = calc?.totalReceitas ?? (recRecebidas + recPrevistas);
+
+  const despPagas = despCash.filter((d: any) => d.status === "PAGO").reduce((s: number, d: any) => s + Number(d.valor || 0), 0);
+  const despPendentes = despCash.filter((d: any) => d.status !== "PAGO").reduce((s: number, d: any) => s + Number(d.valor || 0), 0);
+
+  const resultadoMesVal = calc?.resultadoMes ?? (totalReceitasVal - totalDespesasCashVal - totalCartoesVal);
+  const dispDiariaVal = calc?.dispDiaria ?? (resultadoMesVal > 0 ? resultadoMesVal / 30 : 0);
 
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
@@ -52,30 +88,29 @@ export function gerarPDF({
   y += 4;
 
   // ─── Gráfico de pizza (Distribuição da Receita) ───
-  // Agrupa despesas em dinheiro por categoria (ignora amortizações e consignados, que já entram em outro bloco)
   const grupos: Record<string, number> = {};
-  for (const d of despesas) {
-    if (d.tipo === "consignado" || d.tipo === "amortizacao") continue;
+  for (const d of despCash) {
     const cat = (d.categoria && String(d.categoria).trim()) || "Outros";
     grupos[cat] = (grupos[cat] ?? 0) + Number(d.valor || 0);
   }
-  // Soma TODOS os lançamentos de cartão ativos (ativo !== false cobre registros legados sem o campo)
-  const totCartoes = (cartoes || [])
-    .filter((c: any) => c.ativo !== false)
-    .reduce((s: number, c: any) => s + Number(c.valor || 0), 0);
-  if (totCartoes > 0) grupos["Cartões"] = (grupos["Cartões"] ?? 0) + totCartoes;
+
+  if (totalCartoesVal > 0) {
+    grupos["Cartão"] = totalCartoesVal;
+  }
 
   const fatias = Object.entries(grupos)
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => ({ name: k, value: v }));
-  if (calc.resultadoMes > 0) fatias.push({ name: "Sobra Líquida", value: calc.resultadoMes });
+
+  if (resultadoMesVal > 0) {
+    fatias.push({ name: "Sobra Líquida", value: resultadoMesVal });
+  }
 
   if (fatias.length > 0) {
     const cx = margin + 22, cy = y + 26, r = 22;
     desenharPizza(doc, cx, cy, r, fatias);
-    // Legenda — base 100% = Total de Receitas (garante somatório consistente)
-    const totRec = calc.totalReceitas || fatias.reduce((s, f) => s + f.value, 0);
+    const totRec = totalReceitasVal || fatias.reduce((s, f) => s + f.value, 0);
     const colW = 70;
     const linhasPorCol = Math.max(6, Math.ceil(fatias.length / 2));
     doc.setFontSize(8);
@@ -95,26 +130,24 @@ export function gerarPDF({
     y = Math.max(y + 52, y + 4 + legendaH);
   }
 
-  // ─── Tabela resumo (lógica SIMÉTRICA: previstos + pendentes) ───
+  // ─── Tabela Resumo Indicadores ───
   autoTable(doc, {
     startY: y,
     head: [["Indicador", "Valor"]],
     body: [
-      ["Saldo Inicial", BRL(Number(profile.saldo_inicial))],
-      ["Receitas Recebidas", BRL(calc.recebidos)],
-      ["Receitas Previstas", BRL(calc.previstos)],
-      ...(calc.receitaProjetada > 0
-        ? [["Receita Projetada (Salário Base)", BRL(calc.receitaProjetada)]]
-        : []),
-      ["Total de Receitas", BRL(calc.totalReceitas)],
-      ["Despesas Pagas", BRL(calc.despPagas)],
-      ["Despesas Pendentes", BRL(calc.despPendentes)],
-      ["Total Despesas (cash)", BRL(calc.totalDespesasCash)],
-      ["Cartões Pagos", BRL(calc.cartPagos)],
-      ["Cartões Pendentes", BRL(calc.cartPendentes)],
-      ["Total Cartões", BRL(calc.totalCartoes)],
-      ["Disponibilidade Diária", BRL(calc.dispDiaria)],
-      ["Resultado do Mês (previsto + realizado)", BRL(calc.resultadoMes)],
+      ["Saldo Inicial", BRL(saldoInicial)],
+      ["Receitas Recebidas", BRL(recRecebidas)],
+      ["Receitas Previstas", BRL(recPrevistas)],
+      ...(calc?.receitaProjetada > 0 ? [["Receita Projetada (Salário Base)", BRL(calc.receitaProjetada)]] : []),
+      ["Total de Receitas", BRL(totalReceitasVal)],
+      ["Despesas Pagas", BRL(despPagas)],
+      ["Despesas Pendentes", BRL(despPendentes)],
+      ["Total Despesas (cash)", BRL(totalDespesasCashVal)],
+      ["Cartões Pagos", BRL(totalCartoesVal)],
+      ["Cartões Pendentes", BRL(0)],
+      ["Total Cartões", BRL(totalCartoesVal)],
+      ["Disponibilidade Diária", BRL(dispDiariaVal)],
+      ["Resultado do Mês (previsto + realizado)", BRL(resultadoMesVal)],
     ],
     headStyles: { fillColor: [40, 60, 80] },
     styles: { fontSize: 9 },
@@ -122,31 +155,33 @@ export function gerarPDF({
   });
   y = (doc as any).lastAutoTable.finalY + 6;
 
+  // ─── Tabela de Receitas ───
   if (receitas.length) {
     doc.setFontSize(12); doc.setFont("helvetica", "bold");
     doc.text("Receitas (recebidas e previstas)", margin, y); y += 2;
     autoTable(doc, {
       startY: y + 2,
       head: [["Data", "Descrição", "Categoria", "Status", "Valor"]],
-      body: receitas.map((r: any) => [r.data, r.descricao, r.categoria, r.status, BRL(Number(r.valor))]),
+      body: receitas.map((r: any) => [r.data || r.data_venc || "—", r.descricao, r.categoria, r.status, BRL(Number(r.valor))]),
       styles: { fontSize: 8 }, theme: "striped",
     });
     y = (doc as any).lastAutoTable.finalY + 6;
   }
 
-  const despCash = despesas.filter((d: any) => d.tipo !== "consignado");
+  // ─── Tabela de Despesas em Dinheiro (Cash) ───
   if (despCash.length) {
     doc.setFontSize(12); doc.setFont("helvetica", "bold");
     doc.text("Despesas em Dinheiro (pagas e pendentes)", margin, y); y += 2;
     autoTable(doc, {
       startY: y + 2,
       head: [["Vencimento", "Descrição", "Categoria", "Tipo", "Status", "Valor"]],
-      body: despCash.map((d: any) => [d.data_venc, d.descricao, d.categoria, d.tipo, d.status, BRL(Number(d.valor))]),
+      body: despCash.map((d: any) => [d.data_venc || d.data || "—", d.descricao, d.categoria, d.tipo, d.status, BRL(Number(d.valor))]),
       styles: { fontSize: 8 }, theme: "striped",
     });
     y = (doc as any).lastAutoTable.finalY + 6;
   }
 
+  // ─── Insumos ───
   if (insumos.length) {
     doc.setFontSize(12); doc.setFont("helvetica", "bold");
     doc.text("Insumos", margin, y); y += 2;
@@ -159,16 +194,18 @@ export function gerarPDF({
     y = (doc as any).lastAutoTable.finalY + 6;
   }
 
-  if (cartoes.length) {
-    const grupos: Record<string, any[]> = {};
-    for (const c of cartoes) {
-      const k = c.cartao || "Geral";
-      (grupos[k] ??= []).push(c);
+  // ─── Detalhamento de Cartões ───
+  const cartoesExibicao = cartoes.length > 0 ? cartoes : despesasCartaoLançadas;
+  if (cartoesExibicao.length) {
+    const gruposCartao: Record<string, any[]> = {};
+    for (const c of cartoesExibicao) {
+      const k = c.cartao || c.descricao || "Santander";
+      (gruposCartao[k] ??= []).push(c);
     }
     doc.setFontSize(12); doc.setFont("helvetica", "bold");
     doc.text("Despesas de Cartão (por banco/emissor)", margin, y); y += 2;
-    for (const [banco, itens] of Object.entries(grupos)) {
-      const subtotal = itens.filter((c: any) => c.ativo).reduce((s: number, c: any) => s + Number(c.valor), 0);
+    for (const [banco, itens] of Object.entries(gruposCartao)) {
+      const subtotal = itens.reduce((s: number, c: any) => s + Number(c.valor || 0), 0);
       autoTable(doc, {
         startY: y + 2,
         head: [[`${banco} — Subtotal ativo: ${BRL(subtotal)}`, "", "", "", ""]],
@@ -181,10 +218,10 @@ export function gerarPDF({
         head: [["Descrição", "Categoria", "Fatura", "Parcela", "Valor"]],
         body: itens.map((c: any) => [
           c.descricao + (c.consolidado ? " (mãe)" : ""),
-          c.categoria,
+          c.categoria || "Cartão",
           c.fatura === "seguinte" ? "Seguinte" : "Atual",
-          c.parcela_total > 1 ? `${c.parcela_num}/${c.parcela_total}` : "—",
-          BRL(Number(c.valor)),
+          c.parcela_total > 1 ? `${c.parcela_num}/${c.parcela_total}` : (c.total_parcelas ? `${c.parcela_atual}/${c.total_parcelas}` : "—"),
+          BRL(Number(c.valor || c.valor_parcela || 0)),
         ]),
         styles: { fontSize: 8 }, theme: "striped",
       });
@@ -192,6 +229,7 @@ export function gerarPDF({
     }
   }
 
+  // ─── Consignados em Folha ───
   if (contratos.length) {
     const evMes = (eventos ?? []).filter((e: any) => e.tipo === "amortizacao" && e.competencia === comp);
     const porContrato: Record<string, { juros: number; pago: number }> = {};

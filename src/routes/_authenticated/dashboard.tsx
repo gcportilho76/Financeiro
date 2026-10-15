@@ -201,13 +201,9 @@ return (
               <Sparkles className="w-4 h-4 sm:mr-1" />
               <span className="hidden sm:inline">Mentor</span>
             </Button>
-            <Button 
-  variant="outline" 
-  size="sm" 
-  onClick={() => gerarPDF({ comp, profile, receitas: data?.receitas, despesas: data?.despesas, insumos: data?.insumos, contratos: data?.contratos, caixinhas: data?.caixinhas })}
->
-  <Printer className="w-4 h-4 mr-1" /> Relatório
-</Button>
+            <Button variant="outline" size="sm" onClick={() => gerarPDF({ comp, profile, receitas: data?.receitas, despesas: data?.despesas, insumos: data?.insumos, contratos: data?.contratos, caixinhas: data?.caixinhas })}>
+              <Printer className="w-4 h-4 mr-1" /> Relatório
+            </Button>
             <Button variant="outline" size="sm" onClick={signOut} title="Sair da conta">
               <LogOut className="w-4 h-4 sm:mr-1" />
               <span className="hidden sm:inline">Sair</span>
