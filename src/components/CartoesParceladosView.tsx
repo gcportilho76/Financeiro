@@ -28,11 +28,6 @@ interface CartoesParceladosViewProps {
 
 const STORAGE_KEY = "orçamento_gute_cartoes_parcelados";
 
-const MESES_MAP: Record<string, number> = {
-  janeiro: 0, feveiro: 1, fevereiro: 1, marco: 2, março: 2, abril: 3, maio: 4, junho: 5,
-  julho: 6, agosto: 7, setembro: 8, outubro: 9, novembro: 10, dezembro: 11
-};
-
 export function CartoesParceladosView({ data, currentMonth, onSaved }: CartoesParceladosViewProps) {
   const [compras, setCompras] = useState<CompraParceladaItem[]>(() => {
     try {
@@ -52,30 +47,6 @@ export function CartoesParceladosView({ data, currentMonth, onSaved }: CartoesPa
   const [valorParcela, setValorParcela] = useState("");
   const [totalParcelas, setTotalParcelas] = useState("");
   const [parcelaAtual, setParcelaAtual] = useState("");
-
-  const parseCurrentDate = (monthStr?: string): Date => {
-    if (!monthStr || typeof monthStr !== "string") return new Date(2026, 9, 1);
-
-    try {
-      if (monthStr.includes("-")) {
-        const [ano, mes] = monthStr.split("-").map(Number);
-        if (!isNaN(ano) && !isNaN(mes)) return new Date(ano, mes - 1, 1);
-      }
-
-      if (monthStr.includes("/")) {
-        const [mesNome, anoStr] = monthStr.split("/");
-        const mesIndex = MESES_MAP[mesNome.trim().toLowerCase()] ?? 9;
-        const ano = Number(anoStr);
-        if (!isNaN(ano)) return new Date(ano, mesIndex, 1);
-      }
-    } catch {
-      return new Date(2026, 9, 1);
-    }
-
-    return new Date(2026, 9, 1);
-  };
-
-  const dateVisualizada = parseCurrentDate(currentMonth);
 
   const saveToStorage = (updatedList: CompraParceladaItem[]) => {
     setCompras(updatedList);
@@ -143,23 +114,17 @@ export function CartoesParceladosView({ data, currentMonth, onSaved }: CartoesPa
     if (onSaved) onSaved();
   };
 
-  const dateBaseCadastro = new Date(2026, 9, 1);
-  const diffMeses = (dateVisualizada.getFullYear() - dateBaseCadastro.getFullYear()) * 12 + 
-                    (dateVisualizada.getMonth() - dateBaseCadastro.getMonth());
-
+  // Cálculo temporal estritamente seguro
   const comprasProcessadas = compras.map((item) => {
     const pInicial = Number(item.parcela_atual) || 1;
     const pTotal = Number(item.total_parcelas) || 1;
 
-    const pCalculada = pInicial + diffMeses;
+    // Calcula os meses restantes com base no momento inicial do lançamento
+    const pRestantes = Math.max(0, pTotal - pInicial + 1);
+    const valorParcela = Number(item.valor_parcela) || 0;
+    const progresso = Math.min(100, Math.round((pInicial / pTotal) * 100));
 
-    const isAtiva = pCalculada > 0 && pCalculada <= pTotal;
-    const isQuitada = pCalculada > pTotal;
-
-    const valorParcela = isAtiva ? Number(item.valor_parcela) || 0 : 0;
-    const pExibicao = Math.max(1, Math.min(pCalculada, pTotal));
-    const progresso = Math.min(100, Math.round((pExibicao / pTotal) * 100));
-
+    // Data final prevista de quitação
     const dataTermino = new Date(2026, 9, 1);
     dataTermino.setMonth(dataTermino.getMonth() + (pTotal - pInicial));
     const mesExtenso = dataTermino.toLocaleDateString("pt-BR", { month: "long" });
@@ -171,25 +136,18 @@ export function CartoesParceladosView({ data, currentMonth, onSaved }: CartoesPa
       descricao: item.descricao,
       cartao: item.cartao || "Cartão",
       parcela: valorParcela,
-      parcelaAtual: pCalculada,
+      parcelaAtual: pInicial,
       totalParcelas: pTotal,
-      parcelasRestantes: Math.max(0, pTotal - pCalculada + 1),
+      parcelasRestantes: pRestantes,
       progresso,
-      isAtiva,
-      isQuitada,
       fimEstimado: `${mesFormatado}/${dataTermino.getFullYear()}`,
     };
   });
 
-  const comprasAtivasNoMes = comprasProcessadas.filter((c) => c.isAtiva);
-  comprasAtivasNoMes.sort((a, b) => a.parcelasRestantes - b.parcelasRestantes);
+  comprasProcessadas.sort((a, b) => a.parcelasRestantes - b.parcelasRestantes);
 
-  const totalComprometidoCartao = comprasAtivasNoMes.reduce((acc, c) => acc + c.parcela, 0);
-  const proximaAQuitar = comprasAtivasNoMes[0];
-
-  const economiaTotalLiberada = comprasProcessadas
-    .filter((c) => c.isQuitada)
-    .reduce((acc, c) => acc + Number(c.rawItem.valor_parcela), 0);
+  const totalComprometidoCartao = comprasProcessadas.reduce((acc, c) => acc + c.parcela, 0);
+  const proximaAQuitar = comprasProcessadas[0];
 
   return (
     <div className="space-y-6 mt-4">
@@ -205,13 +163,13 @@ export function CartoesParceladosView({ data, currentMonth, onSaved }: CartoesPa
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Parcelas Ativas neste Mês</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Parcelas Ativas no Cartão</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-amber-500">
               R$ {totalComprometidoCartao.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs font-normal text-muted-foreground">/mês</span>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">{comprasAtivasNoMes.length} parcelas ativas no mês selecionado</p>
+            <p className="text-xs text-muted-foreground mt-1">{comprasProcessadas.length} compras parceladas cadastradas</p>
           </CardContent>
         </Card>
 
@@ -224,20 +182,22 @@ export function CartoesParceladosView({ data, currentMonth, onSaved }: CartoesPa
               - R$ {proximaAQuitar ? proximaAQuitar.parcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0,00"} <span className="text-xs font-normal text-muted-foreground">/mês</span>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {proximaAQuitar ? `${proximaAQuitar.descricao} • Quita em ${proximaAQuitar.fimEstimado}` : "Nenhuma compra a quitar neste período"}
+              {proximaAQuitar ? `${proximaAQuitar.descricao} • Quita em ${proximaAQuitar.fimEstimado}` : "Nenhuma compra cadastrada"}
             </p>
           </CardContent>
         </Card>
 
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Economia Total Acumulada</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Quitação Total dos Parcelados</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-primary">
-              - R$ {economiaTotalLiberada.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs font-normal text-muted-foreground">/mês</span>
+              - R$ {totalComprometidoCartao.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs font-normal text-muted-foreground">/mês</span>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Valor mensal já livre de parcelados quitados até este mês</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {comprasProcessadas.length > 0 ? `Faturas 100% livres de parcelados antigos em ${comprasProcessadas[comprasProcessadas.length - 1].fimEstimado}` : "Sem parcelados pendentes"}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -245,16 +205,16 @@ export function CartoesParceladosView({ data, currentMonth, onSaved }: CartoesPa
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <TrendingDown className="w-5 h-5 text-emerald-500" /> Parcelas Ativas no Mês Selecionado
+            <TrendingDown className="w-5 h-5 text-emerald-500" /> Linha do Tempo de Término de Parcelas
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {comprasAtivasNoMes.length === 0 ? (
+          {comprasProcessadas.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">
-              🎉 Nenhuma parcela de cartão ativa neste mês! Todas as compras parceladas cadastradas já foram quitadas.
+              Nenhuma compra parcelada cadastrada. Clique no botão acima para cadastrar.
             </p>
           ) : (
-            comprasAtivasNoMes.map((c) => (
+            comprasProcessadas.map((c) => (
               <div key={c.id} className="space-y-2 border-b border-border/40 pb-4 last:border-0 last:pb-0">
                 <div className="flex justify-between items-center text-sm">
                   <div>
@@ -300,7 +260,7 @@ export function CartoesParceladosView({ data, currentMonth, onSaved }: CartoesPa
                 <Input value={valorParcela} onChange={(e) => setValorParcela(e.target.value)} placeholder="150,00" />
               </div>
               <div className="space-y-2">
-                <Label>Parcela em Out/2026</Label>
+                <Label>Parcela Atual</Label>
                 <Input value={parcelaAtual} onChange={(e) => setParcelaAtual(e.target.value)} placeholder="1" />
               </div>
               <div className="space-y-2">
