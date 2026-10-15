@@ -204,30 +204,7 @@ return (
             <Button 
   variant="outline" 
   size="sm" 
-  onClick={() => {
-    try {
-      // Garante que o relatório recebe apenas despesas reais e não duplica o cartão
-      const todasDespesas = data?.despesas || [];
-      
-      const despesasSemCartao = todasDespesas.filter((d: any) => {
-        const cat = String(d.categoria || "").toLowerCase();
-        const desc = String(d.descricao || "").toLowerCase();
-        return !cat.includes("cartã") && !cat.includes("cartao") && !desc.includes("fatura");
-      });
-
-      gerarPDF({
-        comp,
-        profile,
-        receitas: data?.receitas || [],
-        despesas: despesasSemCartao,
-        insumos: data?.insumos || [],
-        contratos: data?.contratos || [],
-        caixinhas: data?.caixinhas || []
-      });
-    } catch (err) {
-      console.error("Erro ao gerar PDF:", err);
-    }
-  }}
+  onClick={() => gerarPDF({ comp, profile, receitas: data?.receitas, despesas: data?.despesas, insumos: data?.insumos, contratos: data?.contratos, caixinhas: data?.caixinhas })}
 >
   <Printer className="w-4 h-4 mr-1" /> Relatório
 </Button>
