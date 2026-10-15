@@ -205,31 +205,28 @@ return (
   variant="outline" 
   size="sm" 
   onClick={() => {
-    // Separa os pagamentos de cartão de crédito das despesas em dinheiro/PIX
-    const despesasCartao = data?.despesas?.filter((d: any) => 
-      d.categoria?.toLowerCase() === 'cartão' || 
-      d.categoria?.toLowerCase() === 'cartao' || 
-      d.descricao?.toLowerCase().includes('fatura')
-    ) || [];
+    try {
+      // Garante que o relatório recebe apenas despesas reais e não duplica o cartão
+      const todasDespesas = data?.despesas || [];
+      
+      const despesasSemCartao = todasDespesas.filter((d: any) => {
+        const cat = String(d.categoria || "").toLowerCase();
+        const desc = String(d.descricao || "").toLowerCase();
+        return !cat.includes("cartã") && !cat.includes("cartao") && !desc.includes("fatura");
+      });
 
-    const despesasCash = data?.despesas?.filter((d: any) => 
-      !despesasCartao.some((c: any) => c.id === d.id)
-    ) || [];
-
-    const totalCartoesPago = despesasCartao.reduce((acc: number, item: any) => acc + Number(item.valor || 0), 0);
-
-    // Envia os dados filtrados para a geração do PDF
-    gerarPDF({
-      comp,
-      profile,
-      receitas: data?.receitas || [],
-      despesas: despesasCash,
-      cartoes: despesasCartao,
-      cartoesSoma: totalCartoesPago,
-      insumos: data?.insumos || [],
-      contratos: data?.contratos || [],
-      caixinhas: data?.caixinhas || []
-    });
+      gerarPDF({
+        comp,
+        profile,
+        receitas: data?.receitas || [],
+        despesas: despesasSemCartao,
+        insumos: data?.insumos || [],
+        contratos: data?.contratos || [],
+        caixinhas: data?.caixinhas || []
+      });
+    } catch (err) {
+      console.error("Erro ao gerar PDF:", err);
+    }
   }}
 >
   <Printer className="w-4 h-4 mr-1" /> Relatório
