@@ -41,8 +41,8 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 const CATEGORIAS_DESPESA = [
-  "Habitação", "Alimentação", "Transporte", "Educação", "Saúde",
-  "Lazer", "Cartão", "Amortização", "Consignado", "Outros",
+  "Habitação", "Alimentação", "Transporte", "Educação", "Saúde", 
+  "Lazer", "Impostos", "Cartão", "Amortização", "Consignado", "Outros"
 ];
 const CATEGORIAS_RECEITA = ["Salário", "Freelance", "Investimentos", "Outros"];
 

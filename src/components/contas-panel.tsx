@@ -18,6 +18,11 @@ import { Landmark, Plus, Edit2, Trash2, CheckCircle2, AlertTriangle, ArrowLeftRi
 import { VinculacaoPanel } from "@/components/vinculacao-panel";
 import { toast } from "sonner";
 
+export const CATEGORIAS_DESPESA = [
+  "Habitação", "Alimentação", "Transporte", "Educação", "Saúde",
+  "Lazer", "Impostos", "Cartão", "Amortização", "Consignado", "Outros"
+];
+
 const TIPOS = [
   { v: "corrente", l: "Conta corrente" },
   { v: "poupanca", l: "Poupança" },
