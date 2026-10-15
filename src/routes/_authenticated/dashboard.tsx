@@ -201,9 +201,39 @@ return (
               <Sparkles className="w-4 h-4 sm:mr-1" />
               <span className="hidden sm:inline">Mentor</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => gerarPDF({ comp, profile, receitas: data.receitas, despesas: data.despesas, cartoes: data.cartoes, contratos: data.contratos, insumos: data.insumos, eventos: data.eventos, calc })}>
-              <Printer className="w-4 h-4 mr-1" /> Relatório
-            </Button>
+            <Button 
+  variant="outline" 
+  size="sm" 
+  onClick={() => {
+    // Separa os pagamentos de cartão de crédito das despesas em dinheiro/PIX
+    const despesasCartao = data?.despesas?.filter((d: any) => 
+      d.categoria?.toLowerCase() === 'cartão' || 
+      d.categoria?.toLowerCase() === 'cartao' || 
+      d.descricao?.toLowerCase().includes('fatura')
+    ) || [];
+
+    const despesasCash = data?.despesas?.filter((d: any) => 
+      !despesasCartao.some((c: any) => c.id === d.id)
+    ) || [];
+
+    const totalCartoesPago = despesasCartao.reduce((acc: number, item: any) => acc + Number(item.valor || 0), 0);
+
+    // Envia os dados filtrados para a geração do PDF
+    gerarPDF({
+      comp,
+      profile,
+      receitas: data?.receitas || [],
+      despesas: despesasCash,
+      cartoes: despesasCartao,
+      cartoesSoma: totalCartoesPago,
+      insumos: data?.insumos || [],
+      contratos: data?.contratos || [],
+      caixinhas: data?.caixinhas || []
+    });
+  }}
+>
+  <Printer className="w-4 h-4 mr-1" /> Relatório
+</Button>
             <Button variant="outline" size="sm" onClick={signOut} title="Sair da conta">
               <LogOut className="w-4 h-4 sm:mr-1" />
               <span className="hidden sm:inline">Sair</span>
@@ -300,7 +330,7 @@ return (
           </TabsContent>
 
           <TabsContent value="cartoes" className="mt-4">
-            <CartoesParceladosView data={data} comp={comp} onSaved={refresh} />
+            <CartoesParceladosView data={data} onSaved={refresh} />
           </TabsContent>
 
           <TabsContent value="insumos" className="mt-4">
