@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CreditCard, TrendingDown, Plus, Pencil, Trash2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface CompraParceladaItem {
   id: string;
@@ -15,29 +16,25 @@ interface CompraParceladaItem {
   valor_parcela: number | string;
   parcela_atual: number | string;
   total_parcelas: number | string;
-  mes_inicio?: string; // Formato YYYY-MM do mês base (default: 2026-10)
+  mes_inicio?: string;
 }
 
 interface CartoesParceladosViewProps {
-  data?: {
-    compras_parceladas?: CompraParceladaItem[];
-  };
-  comp?: string; // Formato YYYY-MM vindo do Dashboard
+  data?: any;
+  comp?: string; // Formato YYYY-MM ou YYYY-MM-DD
   onSaved?: () => void;
 }
 
-const STORAGE_KEY = "orçamento_gute_cartoes_parcelados_v3";
-
 export function CartoesParceladosView({ data, comp, onSaved }: CartoesParceladosViewProps) {
-  const [compras, setCompras] = useState<CompraParceladaItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
+  // Puxa do Supabase se disponível, com fallback para os lançamentos da props
+  const comprasIniciais = data?.cartoesLancamentos ?? data?.compras_parceladas ?? [];
+  const [compras, setCompras] = useState<CompraParceladaItem[]>(comprasIniciais);
+
+  useEffect(() => {
+    if (data?.cartoesLancamentos) {
+      setCompras(data.cartoesLancamentos);
     }
-    return data?.compras_parceladas || [];
-  });
+  }, [data]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CompraParceladaItem | null>(null);
@@ -47,15 +44,6 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
   const [valorParcela, setValorParcela] = useState("");
   const [totalParcelas, setTotalParcelas] = useState("");
   const [parcelaAtual, setParcelaAtual] = useState("");
-
-  const saveToStorage = (updatedList: CompraParceladaItem[]) => {
-    setCompras(updatedList);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
-    } catch (e) {
-      console.error("Erro ao salvar localmente:", e);
-    }
-  };
 
   const handleOpenModal = (item?: CompraParceladaItem) => {
     if (item) {
@@ -76,72 +64,97 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!descricao || !valorParcela || !totalParcelas || !parcelaAtual) {
       toast.error("Preencha todos os campos obrigatórios");
       return;
     }
 
-    const payload: CompraParceladaItem = {
-      id: editingItem ? editingItem.id : "compra_" + Date.now(),
-      descricao,
-      cartao: cartao || "Cartão",
-      valor_parcela: parseFloat(valorParcela.replace(",", ".")),
-      total_parcelas: parseInt(totalParcelas, 10),
-      parcela_atual: parseInt(parcelaAtual, 10),
-      mes_inicio: editingItem?.mes_inicio || "2026-10",
-    };
-
-    let updatedList: CompraParceladaItem[];
-    if (editingItem) {
-      updatedList = compras.map((item) => (item.id === editingItem.id ? payload : item));
-      toast.success("Compra parcelada atualizada!");
-    } else {
-      updatedList = [...compras, payload];
-      toast.success("Compra parcelada cadastrada!");
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) {
+      toast.error("Usuário não autenticado");
+      return;
     }
 
-    saveToStorage(updatedList);
-    setIsModalOpen(false);
-    if (onSaved) onSaved();
+    const mesAtualRef = (comp || "2026-10").slice(0, 7);
+
+    const payload = {
+      user_id: u.user.id,
+      descricao,
+      cartao: cartao || "Cartão",
+      valor: parseFloat(valorParcela.replace(",", ".")),
+      valor_parcela: parseFloat(valorParcela.replace(",", ".")),
+      parcela_num: parseInt(parcelaAtual, 10),
+      parcela_total: parseInt(totalParcelas, 10),
+      parcela_atual: parseInt(parcelaAtual, 10),
+      total_parcelas: parseInt(totalParcelas, 10),
+      competencia: mesAtualRef,
+      mes_inicio: mesAtualRef,
+      status: "PENDENTE",
+      ativo: true,
+    };
+
+    let error;
+    if (editingItem?.id) {
+      const res = await supabase.from("cartoes_lancamentos").update(payload).eq("id", editingItem.id);
+      error = res.error;
+    } else {
+      const res = await supabase.from("cartoes_lancamentos").insert(payload);
+      error = res.error;
+    }
+
+    if (error) {
+      toast.error("Erro ao salvar no banco: " + error.message);
+    } else {
+      toast.success(editingItem ? "Compra atualizada no Supabase!" : "Compra cadastrada no Supabase!");
+      setIsModalOpen(false);
+      if (onSaved) onSaved();
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm("Deseja realmente remover esta compra parcelada?")) return;
-    const updatedList = compras.filter((item) => item.id !== id);
-    saveToStorage(updatedList);
-    toast.success("Compra removida!");
-    if (onSaved) onSaved();
+    const { error } = await supabase.from("cartoes_lancamentos").delete().eq("id", id);
+    if (error) {
+      toast.error("Erro ao remover: " + error.message);
+    } else {
+      toast.success("Compra removida!");
+      if (onSaved) onSaved();
+    }
   };
 
-  const mesAtualStr = comp || "2026-10";
+  // Normaliza o mês exibido no cabeçalho (ex: "2027-02")
+  const mesAtualStr = (comp || "2026-10").slice(0, 7);
 
-  const calcularDiferencaMeses = (mesInicio: string, mesAtual: string) => {
-    const [anoIni, mIni] = mesInicio.split("-").map(Number);
-    const [anoAtu, mAtu] = mesAtual.split("-").map(Number);
-    if (isNaN(anoIni) || isNaN(mIni) || isNaN(anoAtu) || isNaN(mAtu)) return 0;
-    return (anoAtu - anoIni) * 12 + (mAtu - mIni);
+  const compParaMeses = (c: string) => {
+    const [ano, mes] = c.split("-").map(Number);
+    if (isNaN(ano) || isNaN(mes)) return 0;
+    return ano * 12 + mes;
   };
 
-  const comprasProcessadas = compras.map((item) => {
-    const pInicial = Number(item.parcela_atual) || 1;
-    const pTotal = Number(item.total_parcelas) || 1;
-    const mesInicioStr = item.mes_inicio || "2026-10";
+  const mesVisualizadoInt = compParaMeses(mesAtualStr);
 
-    const mesesDecorridos = calcularDiferencaMeses(mesInicioStr, mesAtualStr);
+  const comprasProcessadas = compras.map((item: any) => {
+    const pInicial = Number(item.parcela_atual || item.parcela_num) || 1;
+    const pTotal = Number(item.total_parcelas || item.parcela_total) || 1;
+    const mesInicioStr = (item.mes_inicio || item.competencia || "2026-10").slice(0, 7);
+
+    const mesInicioInt = compParaMeses(mesInicioStr);
+    const mesesDecorridos = mesVisualizadoInt - mesInicioInt;
     const pCalculada = pInicial + mesesDecorridos;
 
-    const isAtiva = pCalculada > 0 && pCalculada <= pTotal;
+    // A parcela está ATIVA APENAS se a parcela calculada estiver no intervalo [1, pTotal]
+    const isAtiva = pCalculada >= 1 && pCalculada <= pTotal;
     const isQuitada = pCalculada > pTotal;
 
-    const valorParcela = isAtiva ? Number(item.valor_parcela) || 0 : 0;
+    const valParc = Number(item.valor_parcela || item.valor) || 0;
+    const valorParcela = isAtiva ? valParc : 0;
     const parcelasRestantes = Math.max(0, pTotal - pCalculada);
     const progresso = Math.min(100, Math.round((Math.max(1, Math.min(pCalculada, pTotal)) / pTotal) * 100));
 
-    // Data de término (mês exato em que a última parcela será paga)
+    // Data exata em que a última parcela será debitada
     const [anoBase, mesBase] = mesInicioStr.split("-").map(Number);
-    const dataTermino = new Date(anoBase || 2026, (mesBase || 10) - 1, 1);
-    dataTermino.setMonth(dataTermino.getMonth() + (pTotal - pInicial));
+    const dataTermino = new Date(anoBase || 2026, (mesBase || 10) - 1 + (pTotal - pInicial), 1);
     const mesExtenso = dataTermino.toLocaleDateString("pt-BR", { month: "long" });
     const mesFormatado = mesExtenso.charAt(0).toUpperCase() + mesExtenso.slice(1);
 
@@ -151,7 +164,7 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
       descricao: item.descricao,
       cartao: item.cartao || "Cartão",
       parcela: valorParcela,
-      valorOriginal: Number(item.valor_parcela) || 0,
+      valorOriginal: valParc,
       parcelaAtual: pCalculada,
       totalParcelas: pTotal,
       parcelasRestantes,
@@ -280,7 +293,7 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
                 <Input value={valorParcela} onChange={(e) => setValorParcela(e.target.value)} placeholder="150,00" />
               </div>
               <div className="space-y-2">
-                <Label>Parcela em Out/2026</Label>
+                <Label>Parcela Atual</Label>
                 <Input value={parcelaAtual} onChange={(e) => setParcelaAtual(e.target.value)} placeholder="1" />
               </div>
               <div className="space-y-2">
