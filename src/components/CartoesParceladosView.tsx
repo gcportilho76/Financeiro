@@ -15,7 +15,7 @@ interface CompraParceladaItem {
   valor_parcela: number | string;
   parcela_atual: number | string;
   total_parcelas: number | string;
-  mes_inicio?: string; // Formato YYYY-MM do mês base
+  mes_inicio?: string; // Formato YYYY-MM do mês base (default: 2026-10)
 }
 
 interface CartoesParceladosViewProps {
@@ -114,7 +114,6 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
     if (onSaved) onSaved();
   };
 
-  // Resolução exata do mês ativo recebido via `comp` (ex: "2026-10", "2027-11")
   const mesAtualStr = comp || "2026-10";
 
   const calcularDiferencaMeses = (mesInicio: string, mesAtual: string) => {
@@ -136,10 +135,10 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
     const isQuitada = pCalculada > pTotal;
 
     const valorParcela = isAtiva ? Number(item.valor_parcela) || 0 : 0;
-    const parcelasRestantes = Math.max(0, pTotal - pCalculada + 1);
+    const parcelasRestantes = Math.max(0, pTotal - pCalculada);
     const progresso = Math.min(100, Math.round((Math.max(1, Math.min(pCalculada, pTotal)) / pTotal) * 100));
 
-    // Data estimada de término
+    // Data de término (mês exato em que a última parcela será paga)
     const [anoBase, mesBase] = mesInicioStr.split("-").map(Number);
     const dataTermino = new Date(anoBase || 2026, (mesBase || 10) - 1, 1);
     dataTermino.setMonth(dataTermino.getMonth() + (pTotal - pInicial));
@@ -167,7 +166,7 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
   const comprasQuitadasNoMes = comprasProcessadas.filter((c) => c.isQuitada);
 
   const totalComprometidoCartao = comprasAtivasNoMes.reduce((acc, c) => acc + c.parcela, 0);
-  const proximaAQuitar = comprasAtivasNoMes.sort((a, b) => a.parcelasRestantes - b.parcelasRestantes)[0];
+  const proximaAQuitar = [...comprasAtivasNoMes].sort((a, b) => a.parcelasRestantes - b.parcelasRestantes)[0];
   const totalEconomizadoLiberado = comprasQuitadasNoMes.reduce((acc, c) => acc + c.valorOriginal, 0);
 
   return (
@@ -203,7 +202,7 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
               - R$ {proximaAQuitar ? proximaAQuitar.parcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0,00"} <span className="text-xs font-normal text-muted-foreground">/mês</span>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {proximaAQuitar ? `${proximaAQuitar.descricao} • Quita em ${proximaAQuitar.fimEstimado}` : "Nenhuma compra a quitar"}
+              {proximaAQuitar ? `${proximaAQuitar.descricao} · Quita em ${proximaAQuitar.fimEstimado}` : "Nenhuma compra a quitar"}
             </p>
           </CardContent>
         </Card>
@@ -244,7 +243,7 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-emerald-500 font-medium text-xs sm:text-sm">
-                      Quita em: {c.fimEstimado} ({c.parcelaAtual}/{c.totalParcelas} — faltam {c.parcelasRestantes} parcelas)
+                      Quita em: {c.fimEstimado} ({c.parcelaAtual}/{c.totalParcelas} — {c.parcelasRestantes === 0 ? "Última parcela!" : `faltam ${c.parcelasRestantes} parcelas`})
                     </span>
                     <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleOpenModal(c.rawItem)}>
                       <Pencil className="w-3.5 h-3.5" />
