@@ -300,7 +300,7 @@ return (
           </TabsContent>
 
           <TabsContent value="cartoes" className="mt-4">
-            <CartoesParceladosView data={data} onSaved={refresh} />
+            <CartoesParceladosView data={data} comp={comp} onSaved={refresh} />
           </TabsContent>
 
           <TabsContent value="insumos" className="mt-4">
