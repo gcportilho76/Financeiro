@@ -73,7 +73,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  ssr: false, // Desativa SSR para esta árvore de rotas
+  ssr: false,
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -130,6 +130,8 @@ function RootComponent() {
   const router = useRouter();
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     let mounted = true;
     import("@/integrations/supabase/client").then(({ supabase }) => {
       if (!mounted) return;
@@ -142,15 +144,15 @@ function RootComponent() {
           queryClient.invalidateQueries();
         }
       });
-      if (typeof window !== "undefined") {
-        (window as any).__authSub = sub;
-      }
+      (window as any).__authSub = sub;
     });
     return () => {
       mounted = false;
-      if (typeof window !== "undefined") {
-        try { (window as any).__authSub?.subscription?.unsubscribe?.(); } catch {}
-      }
+      try {
+        if (typeof window !== "undefined") {
+          (window as any).__authSub?.subscription?.unsubscribe?.();
+        }
+      } catch {}
     };
   }, [queryClient, router]);
 
