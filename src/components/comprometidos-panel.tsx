@@ -22,7 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { BRL, formatCompetencia, proxCompetencia } from "@/lib/finance";
 
 type Filtro = "todos" | "cartoes" | "consignados" | "despesas";
 type Bloco = "cartoes" | "consignados" | "despesas";
@@ -51,6 +50,39 @@ type FormState = {
   parcela_total: string;
   tipo: string;
 };
+
+// Funções de auxílio seguras sem dependências externas
+function BRLSafe(val: number): string {
+  try {
+    return Number(val || 0).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
+  } catch {
+    return `R$ ${(val || 0).toFixed(2)}`;
+  }
+}
+
+function calcularProximaCompetencia(c?: string): string {
+  if (!c) return "2026-11";
+  const partes = String(c).split("-").map(Number);
+  if (partes.length < 2 || isNaN(partes[0]) || isNaN(partes[1])) return "2026-11";
+  let [ano, mes] = partes;
+  mes += 1;
+  if (mes > 12) {
+    mes = 1;
+    ano += 1;
+  }
+  return `${ano}-${String(mes).padStart(2, "0")}`;
+}
+
+function formatarCompetenciaTexto(c?: string): string {
+  if (!c) return "";
+  const partes = String(c).split("-").map(Number);
+  if (partes.length < 2 || isNaN(partes[0]) || isNaN(partes[1])) return c;
+  const data = new Date(partes[0], partes[1] - 1, 1);
+  return data.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}
 
 function limparParcela(desc: string) {
   if (!desc) return "";
@@ -86,16 +118,8 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
   }, []);
 
   const compSegura = comp || "2026-10";
-
-  const alvo = useMemo(() => {
-    try {
-      return proxCompetencia(compSegura) || compSegura;
-    } catch {
-      return compSegura;
-    }
-  }, [compSegura]);
-
-  const alvoStr = (alvo || "2026-10").slice(0, 7);
+  const alvo = useMemo(() => calcularProximaCompetencia(compSegura), [compSegura]);
+  const alvoStr = (alvo || "2026-11").slice(0, 7);
   const alvoMesesInt = compParaMeses(alvoStr);
 
   const [filtro, setFiltro] = useState<Filtro>("todos");
@@ -118,7 +142,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
           despesas: despesas.data ?? [],
         };
       } catch (e) {
-        console.error("Erro no Supabase:", e);
+        console.error("Erro Supabase:", e);
         return { cartoes: [], despesas: [] };
       }
     },
@@ -135,6 +159,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
 
     const out: Linha[] = [];
 
+    // 1. Processa Cartões de Crédito (localStorage + Supabase)
     let listaCartoesRaw: any[] = [];
     try {
       if (typeof window !== "undefined") {
@@ -181,6 +206,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
       }
     }
 
+    // 2. Processa Consignados
     for (const ct of contratos ?? []) {
       if (!ct || ct.ativo === false) continue;
       const prox = Number(ct.parcela_atual || 0) + 1;
@@ -200,6 +226,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
       }
     }
 
+    // 3. Processa Despesas
     for (const d of data?.despesas ?? []) {
       if (!d) continue;
       out.push({
@@ -412,13 +439,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
     }
   };
 
-  const tituloFormatado = useMemo(() => {
-    try {
-      return formatCompetencia(alvo);
-    } catch {
-      return alvo;
-    }
-  }, [alvo]);
+  const tituloFormatado = useMemo(() => formatarCompetenciaTexto(alvo), [alvo]);
 
   if (!isClient) {
     return (
@@ -442,7 +463,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
         <div className="flex items-center gap-4">
           <div className="text-right">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">Total do filtro</div>
-            <div className="text-2xl font-bold tabular">{BRL(total)}</div>
+            <div className="text-2xl font-bold tabular">{BRLSafe(total)}</div>
           </div>
           <Button size="sm" onClick={abrirNovo}>
             <Plus className="w-4 h-4 mr-1" /> Novo
@@ -454,7 +475,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
         <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
           <div>
             <div className="text-xs uppercase tracking-wide text-muted-foreground">Total geral comprometido</div>
-            <div className="text-3xl font-bold tabular">{BRL(totalGeral)}</div>
+            <div className="text-3xl font-bold tabular">{BRLSafe(totalGeral)}</div>
           </div>
           <div className="text-xs text-muted-foreground">
             {linhas.length} lançamento{linhas.length !== 1 ? "s" : ""} em {tituloFormatado}
@@ -492,7 +513,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
                         </div>
                         <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${aberto ? "rotate-180" : ""}`} />
                       </div>
-                      <div className="mt-1 text-lg font-semibold tabular">{BRL(r.total)}</div>
+                      <div className="mt-1 text-lg font-semibold tabular">{BRLSafe(r.total)}</div>
                       <div className="text-xs text-muted-foreground tabular">
                         {r.pct.toFixed(1)}% do total
                         {r.diff !== null && (
@@ -529,14 +550,14 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
                                     {l.parcela !== "—" ? ` · ${l.parcela}` : ""}
                                   </span>
                                 </span>
-                                <span className="tabular font-medium whitespace-nowrap">{BRL(l.valor)}</span>
+                                <span className="tabular font-medium whitespace-nowrap">{BRLSafe(l.valor)}</span>
                               </li>
                             ))}
                           </ul>
                         )}
                         <div className="flex items-center justify-between pt-2 mt-1 border-t border-border text-xs font-semibold">
                           <span>Subtotal ({itensFiltrados.length})</span>
-                          <span className="tabular">{BRL(itensFiltrados.reduce((s, l) => s + l.valor, 0))}</span>
+                          <span className="tabular">{BRLSafe(itensFiltrados.reduce((s, l) => s + l.valor, 0))}</span>
                         </div>
                         <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => setFiltro(r.id)}>
                           Filtrar tabela por {r.label}
@@ -561,7 +582,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
           >
             <span className="mr-1.5">{f.icon}</span>
             {f.label}
-            <span className="ml-2 tabular text-xs opacity-80">{BRL(f.total)}</span>
+            <span className="ml-2 tabular text-xs opacity-80">{BRLSafe(f.total)}</span>
           </Button>
         ))}
       </div>
@@ -594,7 +615,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
                     <Badge variant="outline" className="text-[11px]">{l.categoria}</Badge>
                   </td>
                   <td className="py-2 pr-3 tabular text-muted-foreground">{l.parcela}</td>
-                  <td className="py-2 pr-3 text-right tabular font-medium">{BRL(l.valor)}</td>
+                  <td className="py-2 pr-3 text-right tabular font-medium">{BRLSafe(l.valor)}</td>
                   <td className="py-2 text-right whitespace-nowrap">
                     <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => abrirEdicao(l)}>
                       <Pencil className="w-4 h-4" />
@@ -612,7 +633,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
                   Total ({visiveis.length} lançamento{visiveis.length !== 1 ? "s" : ""})
                 </td>
                 <td />
-                <td className="py-3 pr-3 text-right font-bold tabular">{BRL(total)}</td>
+                <td className="py-3 pr-3 text-right font-bold tabular">{BRLSafe(total)}</td>
                 <td />
               </tr>
             </tfoot>
