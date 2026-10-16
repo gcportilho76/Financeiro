@@ -50,8 +50,9 @@ export const BRL = (v: number) =>
   (Number.isFinite(v) ? v : 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export function diasNoMes(competencia: string) {
-  // competencia 'YYYY-MM-01'
+  if (!competencia) return 30;
   const [y, m] = competencia.split("-").map(Number);
+  if (isNaN(y) || isNaN(m)) return 30;
   return new Date(y, m, 0).getDate();
 }
 
@@ -66,18 +67,23 @@ export function competenciaAtual() {
 }
 
 export function proxCompetencia(c: string) {
+  if (!c) return competenciaAtual();
   const [y, m] = c.split("-").map(Number);
+  if (isNaN(y) || isNaN(m)) return competenciaAtual();
   const d = new Date(y, m, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
 export function formatCompetencia(c: string) {
+  if (!c) return "";
   const [y, m] = c.split("-").map(Number);
+  if (isNaN(y) || isNaN(m)) return c;
   const meses = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
   ];
-  return `${meses[m - 1]}/${y}`;
+  const indiceMes = Math.max(0, Math.min(11, m - 1));
+  return `${meses[indiceMes]}/${y}`;
 }
 
 // Soma cartões sem duplicidade
@@ -115,7 +121,7 @@ export function calcular({
   const reservasGuard = num(reservasGuardadas);
   const salarioBaseNum = num(salarioBase);
 
-  const despesasCash = despesas;
+  const despesasCash = despesas || [];
 
   const totalDias = diasNoMes(competencia);
   const hojeComp = hojeStr.slice(0, 7) + "-01";
@@ -133,14 +139,14 @@ export function calcular({
     diasRestantes = totalDias - diaHoje + 1;
   }
 
-  const recebidos = receitas
+  const recebidos = (receitas || [])
     .filter((r) => r.status === "RECEBIDO")
     .reduce((s, r) => s + num(r.valor), 0);
-  const previstos = receitas
+  const previstos = (receitas || [])
     .filter((r) => r.status === "PREVISTO")
     .reduce((s, r) => s + num(r.valor), 0);
   const receitaProjetada =
-    modoPlanejamento && receitas.length === 0 ? Math.max(0, salarioBaseNum) : 0;
+    modoPlanejamento && (receitas || []).length === 0 ? Math.max(0, salarioBaseNum) : 0;
   const totalReceitas = recebidos + previstos + receitaProjetada;
 
   const despPagas = despesasCash
@@ -151,7 +157,7 @@ export function calcular({
     .reduce((s, d) => s + num(d.valor), 0);
   const totalDespesasCash = despPagas + despPendentes;
 
-  const cartoesAtivos = cartoes.filter((c) => c.ativo !== false);
+  const cartoesAtivos = (cartoes || []).filter((c) => c.ativo !== false);
   const cartPagos = cartoesAtivos
     .filter((c) => c.status === "PAGO")
     .reduce((s, c) => s + num(c.valor), 0);
@@ -200,7 +206,7 @@ export function calcular({
 }
 
 export function jurosSalvosTotais(eventos: { tipo: string; juros_salvos: number }[]) {
-  return eventos
+  return (eventos || [])
     .filter((e) => e.tipo === "amortizacao")
     .reduce((s, e) => s + Number(e.juros_salvos), 0);
 }
