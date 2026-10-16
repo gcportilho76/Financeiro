@@ -56,6 +56,12 @@ function limparParcela(desc: string) {
   return desc.replace(/\s*\(\d+\/\d+\)\s*$/, "").trim();
 }
 
+const compParaMeses = (c: string) => {
+  const [ano, mes] = c.split("-").map(Number);
+  if (isNaN(ano) || isNaN(mes)) return 0;
+  return ano * 12 + mes;
+};
+
 const vazio = (bloco: Bloco): FormState => ({
   bloco,
   id: null,
@@ -68,8 +74,13 @@ const vazio = (bloco: Bloco): FormState => ({
   tipo: "variavel",
 });
 
+const LOCAL_STORAGE_KEY = "gute_cartoes_parcelados_v7";
+
 export function ComprometidosPanel({ comp, contratos }: { comp: string; contratos: any[] }) {
   const alvo = proxCompetencia(comp);
+  const alvoStr = alvo.slice(0, 7);
+  const alvoMesesInt = compParaMeses(alvoStr);
+
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [expandido, setExpandido] = useState<Bloco | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -81,7 +92,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
     queryKey: ["comprometidos", alvo],
     queryFn: async () => {
       const [cartoes, despesas] = await Promise.all([
-        supabase.from("cartoes_lancamentos").select("*").eq("competencia", alvo).eq("ativo", true),
+        supabase.from("cartoes_lancamentos").select("*").eq("ativo", true),
         supabase.from("despesas").select("*").eq("competencia", alvo),
       ]);
       return {
@@ -98,25 +109,54 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
 
   const linhas = useMemo<Linha[]>(() => {
     const out: Linha[] = [];
-    for (const c of data?.cartoes ?? []) {
-      out.push({
-        id: c.id,
-        bloco: "cartoes",
-        origem: c.cartao,
-        descricao: limparParcela(c.descricao),
-        categoria: c.categoria,
-        parcela: `${c.parcela_num}/${c.parcela_total}`,
-        parcela_num: Number(c.parcela_num),
-        parcela_total: Number(c.parcela_total),
-        valor: Number(c.valor),
-      });
+
+    // 1. Puxa do localStorage em prioridade e completa com os dados do Supabase
+    let listaCartoesRaw: any[] = [];
+    try {
+      const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (local) {
+        listaCartoesRaw = JSON.parse(local);
+      }
+    } catch (e) {
+      console.error(e);
     }
+
+    if (listaCartoesRaw.length === 0) {
+      listaCartoesRaw = data?.cartoes ?? [];
+    }
+
+    // Calcula as parcelas ativas no mês-alvo
+    for (const c of listaCartoesRaw) {
+      const pInicial = Number(c.parcela_atual || c.parcela_num) || 1;
+      const pTotal = Number(c.total_parcelas || c.parcela_total) || 1;
+      const mesInicioStr = (c.mes_inicio || c.competencia || alvoStr).slice(0, 7);
+
+      const mesInicioInt = compParaMeses(mesInicioStr);
+      const pCalculada = pInicial + (alvoMesesInt - mesInicioInt);
+
+      if (pCalculada >= 1 && pCalculada <= pTotal) {
+        const vParc = Number(c.valor_parcela || c.valor) || 0;
+        out.push({
+          id: String(c.id),
+          bloco: "cartoes",
+          origem: c.cartao || "Cartão",
+          descricao: limparParcela(c.descricao || ""),
+          categoria: c.categoria || "Cartão",
+          parcela: `${pCalculada}/${pTotal}`,
+          parcela_num: pCalculada,
+          parcela_total: pTotal,
+          valor: vParc,
+        });
+      }
+    }
+
+    // 2. Processa Consignados Ativos
     for (const ct of contratos ?? []) {
       if (!ct.ativo) continue;
       const prox = Number(ct.parcela_atual) + 1;
       if (prox > Number(ct.total_parcelas)) continue;
       out.push({
-        id: ct.id,
+        id: String(ct.id),
         bloco: "consignados",
         origem: ct.banco ?? "Consignado",
         descricao: ct.nome,
@@ -127,9 +167,11 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
         valor: Number(ct.valor_parcela),
       });
     }
+
+    // 3. Processa Despesas do Mês
     for (const d of data?.despesas ?? []) {
       out.push({
-        id: d.id,
+        id: String(d.id),
         bloco: "despesas",
         origem: d.tipo === "fixa" ? "Despesa fixa" : "Despesa variável",
         descricao: d.descricao,
@@ -141,8 +183,9 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
         valor: Number(d.valor),
       });
     }
+
     return out.sort((a, b) => b.valor - a.valor);
-  }, [data, contratos]);
+  }, [data, contratos, alvoStr, alvoMesesInt]);
 
   const totalPor = (b: Bloco) =>
     linhas.filter((l) => l.bloco === b).reduce((s, l) => s + l.valor, 0);
@@ -172,8 +215,6 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
     });
   }, [linhas, totalGeral]);
 
-
-
   const abrirNovo = () => {
     const bloco: Bloco = filtro === "despesas" ? "despesas" : "cartoes";
     setForm(vazio(bloco));
@@ -183,7 +224,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
     setForm({
       bloco: l.bloco,
       id: l.id,
-      origem: l.bloco === "consignados" ? l.origem : l.origem,
+      origem: l.origem,
       descricao: l.descricao,
       categoria: l.categoria,
       valor: String(l.valor),
@@ -212,8 +253,11 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
           descricao: form.descricao.trim(),
           categoria: form.categoria || "Cartão",
           valor,
+          valor_parcela: valor,
           parcela_num: Number(form.parcela_num) || 1,
+          parcela_atual: Number(form.parcela_num) || 1,
           parcela_total: Number(form.parcela_total) || 1,
+          total_parcelas: Number(form.parcela_total) || 1,
         };
         const { error } = form.id
           ? await supabase.from("cartoes_lancamentos").update(payload).eq("id", form.id)
@@ -221,6 +265,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
               ...payload,
               user_id: uid,
               competencia: alvo,
+              mes_inicio: alvo,
               status: "PENDENTE",
               ativo: true,
             });
@@ -345,7 +390,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
                   <div key={r.id} className="rounded-md border border-border bg-card">
                     <button
                       onClick={() => setExpandido(aberto ? null : bloco)}
-                      className="w-full text-left p-3 hover:border-primary/50 transition-colors"
+                      className="w-full text-left p-3 hover:border-primary/50 transition-colors cursor-pointer"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -385,7 +430,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
                             {itensFiltrados.map((l) => (
                               <li key={l.id} className="py-1.5 flex items-start justify-between gap-2 text-xs">
                                 <span className="min-w-0">
-                                  <span className="block truncate">{l.descricao}</span>
+                                  <span className="block truncate font-medium">{l.descricao}</span>
                                   <span className="text-muted-foreground">
                                     {l.origem}
                                     {l.parcela !== "—" ? ` · ${l.parcela}` : ""}
@@ -409,12 +454,9 @@ export function ComprometidosPanel({ comp, contratos }: { comp: string; contrato
                 );
               })}
             </div>
-
           </>
         )}
       </div>
-
-
 
       <div className="flex flex-wrap gap-2 mb-4">
         {filtros.map((f) => (
