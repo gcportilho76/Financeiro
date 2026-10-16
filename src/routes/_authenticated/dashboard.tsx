@@ -298,7 +298,11 @@ export function Dashboard() {
           </TabsContent>
 
           <TabsContent value="comprometido" className="mt-4">
-            <ComprometidosPanel comp={comp} contratos={data.contratos} />
+          <ComprometidosPanel 
+            comp={comp} 
+            contratos={data.contratos} 
+            cartoesLancamentos={data.cartoesLancamentos} 
+           />
           </TabsContent>
 
           <TabsContent value="importar" className="mt-4">
