@@ -59,7 +59,7 @@ function limparParcela(desc: string) {
 
 const compParaMeses = (c: string) => {
   if (!c) return 0;
-  const [ano, mes] = c.split("-").map(Number);
+  const [ano, mes] = String(c).split("-").map(Number);
   if (isNaN(ano) || isNaN(mes)) return 0;
   return ano * 12 + mes;
 };
@@ -80,7 +80,7 @@ const LOCAL_STORAGE_KEY = "gute_cartoes_parcelados_v7";
 
 export function ComprometidosPanel({ comp, contratos }: { comp?: string; contratos?: any[] }) {
   const compSegura = comp || "2026-10";
-  
+
   const alvo = useMemo(() => {
     try {
       return proxCompetencia(compSegura) || compSegura;
@@ -112,7 +112,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
           despesas: despesas.data ?? [],
         };
       } catch (e) {
-        console.error(e);
+        console.error("Erro na busca do Supabase:", e);
         return { cartoes: [], despesas: [] };
       }
     },
@@ -126,6 +126,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
   const linhas = useMemo<Linha[]>(() => {
     const out: Linha[] = [];
 
+    // 1. Processa Cartões de Crédito (localStorage + Supabase)
     let listaCartoesRaw: any[] = [];
     try {
       const local = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -149,7 +150,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
     for (const c of Array.from(mapCartoes.values())) {
       const pInicial = Number(c.parcela_atual || c.parcela_num) || 1;
       const pTotal = Number(c.total_parcelas || c.parcela_total) || 1;
-      const mesInicioStr = (c.mes_inicio || c.competencia || alvoStr).slice(0, 7);
+      const mesInicioStr = String(c.mes_inicio || c.competencia || alvoStr).slice(0, 7);
 
       const mesInicioInt = compParaMeses(mesInicioStr);
       const pCalculada = pInicial + (alvoMesesInt - mesInicioInt);
@@ -170,23 +171,27 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
       }
     }
 
+    // 2. Processa Consignados / Empréstimos
     for (const ct of contratos ?? []) {
-      if (!ct || !ct.ativo) continue;
+      if (!ct || ct.ativo === false) continue;
       const prox = Number(ct.parcela_atual || 0) + 1;
-      if (prox > Number(ct.total_parcelas || 1)) continue;
-      out.push({
-        id: String(ct.id),
-        bloco: "consignados",
-        origem: ct.banco ?? "Consignado",
-        descricao: ct.nome || "Empréstimo",
-        categoria: "Consignado",
-        parcela: `${prox}/${ct.total_parcelas}`,
-        parcela_num: prox,
-        parcela_total: Number(ct.total_parcelas || 1),
-        valor: Number(ct.valor_parcela || 0),
-      });
+      const pTotal = Number(ct.total_parcelas || 1);
+      if (prox <= pTotal) {
+        out.push({
+          id: String(ct.id),
+          bloco: "consignados",
+          origem: ct.banco ?? "Consignado",
+          descricao: ct.nome || "Empréstimo",
+          categoria: "Consignado",
+          parcela: `${prox}/${pTotal}`,
+          parcela_num: prox,
+          parcela_total: pTotal,
+          valor: Number(ct.valor_parcela || 0),
+        });
+      }
     }
 
+    // 3. Processa Despesas do Mês
     for (const d of data?.despesas ?? []) {
       if (!d) continue;
       out.push({
