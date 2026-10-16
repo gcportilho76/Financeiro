@@ -13,9 +13,9 @@ interface CompraParceladaItem {
   id: string;
   descricao: string;
   cartao?: string;
-  valor_parcela: number | string;
-  parcela_atual: number | string;
-  total_parcelas: number | string;
+  valor_parcela: number;
+  parcela_atual: number;
+  total_parcelas: number;
   mes_inicio?: string;
 }
 
@@ -25,7 +25,7 @@ interface CartoesParceladosViewProps {
   onSaved?: () => void;
 }
 
-const LOCAL_STORAGE_KEY = "gute_cartoes_parcelados_v4";
+const LOCAL_STORAGE_KEY = "gute_cartoes_parcelados_v5";
 
 export function CartoesParceladosView({ data, comp, onSaved }: CartoesParceladosViewProps) {
   const mesAtualStr = (comp || "2026-10").slice(0, 7);
@@ -37,11 +37,11 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
     } catch (e) {
       console.error(e);
     }
-    return data?.cartoesLancamentos ?? data?.compras_parceladas ?? [];
+    return [];
   });
 
   useEffect(() => {
-    if (data?.cartoesLancamentos && data.cartoesLancamentos.length > 0) {
+    if (data?.cartoesLancamentos && Array.isArray(data.cartoesLancamentos) && data.cartoesLancamentos.length > 0) {
       const convertidos = data.cartoesLancamentos.map((c: any) => ({
         id: String(c.id),
         descricao: c.descricao || "",
@@ -54,7 +54,7 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
       setCompras(convertidos);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(convertidos));
     }
-  }, [data]);
+  }, [data, mesAtualStr]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CompraParceladaItem | null>(null);
@@ -84,26 +84,26 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
     setIsModalOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
     if (!descricao.trim()) {
       toast.error("Informe a descrição da compra");
       return;
     }
-    if (!valorParcela || isNaN(parseFloat(valorParcela.replace(",", ".")))) {
-      toast.error("Informe um valor válido");
-      return;
-    }
-    if (!totalParcelas || !parcelaAtual) {
-      toast.error("Preencha todas as parcelas");
+
+    const vParc = parseFloat(String(valorParcela).replace(",", "."));
+    if (isNaN(vParc) || vParc <= 0) {
+      toast.error("Informe um valor de parcela válido");
       return;
     }
 
-    const vParc = parseFloat(valorParcela.replace(",", "."));
-    const pAtual = parseInt(parcelaAtual, 10);
-    const pTotal = parseInt(totalParcelas, 10);
+    const pAtual = parseInt(String(parcelaAtual), 10) || 1;
+    const pTotal = parseInt(String(totalParcelas), 10) || 1;
 
+    const idNovo = editingItem?.id || "parcela_" + Date.now();
     const novoItem: CompraParceladaItem = {
-      id: editingItem?.id || "parcela_" + Date.now(),
+      id: idNovo,
       descricao: descricao.trim(),
       cartao: cartao.trim() || "Cartão",
       valor_parcela: vParc,
@@ -112,51 +112,59 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
       mes_inicio: editingItem?.mes_inicio || mesAtualStr,
     };
 
-    let listaAtualizada: CompraParceladaItem[];
-    if (editingItem) {
-      listaAtualizada = compras.map((c) => (c.id === editingItem.id ? novoItem : c));
-    } else {
-      listaAtualizada = [...compras, novoItem];
-    }
+    setCompras((prev) => {
+      const existe = prev.some((c) => c.id === idNovo);
+      const lista = existe
+        ? prev.map((c) => (c.id === idNovo ? novoItem : c))
+        : [...prev, novoItem];
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(lista));
+      return lista;
+    });
 
-    setCompras(listaAtualizada);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(listaAtualizada));
+    setIsModalOpen(false);
+    toast.success("Compra parcelada salva!");
 
+    // Sincroniza em segundo plano com o Supabase sem travar a interface
     try {
       const { data: u } = await supabase.auth.getUser();
       if (u?.user) {
-        const payloadSupabase = {
+        const payload = {
           user_id: u.user.id,
           descricao: novoItem.descricao,
           cartao: novoItem.cartao,
           valor: novoItem.valor_parcela,
+          valor_parcela: novoItem.valor_parcela,
           parcela_num: novoItem.parcela_atual,
+          parcela_atual: novoItem.parcela_atual,
           parcela_total: novoItem.total_parcelas,
+          total_parcelas: novoItem.total_parcelas,
           competencia: novoItem.mes_inicio,
+          mes_inicio: novoItem.mes_inicio,
           status: "PENDENTE",
           ativo: true,
         };
 
         if (editingItem?.id && !editingItem.id.startsWith("parcela_")) {
-          await supabase.from("cartoes_lancamentos").update(payloadSupabase).eq("id", editingItem.id);
+          await supabase.from("cartoes_lancamentos").update(payload).eq("id", editingItem.id);
         } else {
-          await supabase.from("cartoes_lancamentos").insert(payloadSupabase);
+          await supabase.from("cartoes_lancamentos").insert([payload]);
         }
       }
     } catch (err) {
-      console.warn("Aviso ao salvar no Supabase, mantido no localStorage:", err);
+      console.warn("Sincronização Supabase em background:", err);
     }
 
-    toast.success("Salvo com sucesso!");
-    setIsModalOpen(false);
     if (onSaved) onSaved();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Deseja realmente remover esta compra parcelada?")) return;
-    const listaAtualizada = compras.filter((item) => item.id !== id);
-    setCompras(listaAtualizada);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(listaAtualizada));
+    
+    setCompras((prev) => {
+      const lista = prev.filter((item) => item.id !== id);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(lista));
+      return lista;
+    });
 
     if (!id.startsWith("parcela_")) {
       try {
@@ -317,37 +325,39 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingItem ? "Editar Compra Parcelada" : "Nova Compra Parcelada"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Descrição da Compra</Label>
-              <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex: Notebook, Celular..." />
-            </div>
-            <div className="space-y-2">
-              <Label>Cartão Utilizado</Label>
-              <Input value={cartao} onChange={(e) => setCartao(e.target.value)} placeholder="Ex: Nubank, Santander..." />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
+          <form onSubmit={handleSave}>
+            <DialogHeader>
+              <DialogTitle>{editingItem ? "Editar Compra Parcelada" : "Nova Compra Parcelada"}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Valor Parcela (R$)</Label>
-                <Input value={valorParcela} onChange={(e) => setValorParcela(e.target.value)} placeholder="100" />
+                <Label>Descrição da Compra</Label>
+                <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex: Notebook, Celular..." />
               </div>
               <div className="space-y-2">
-                <Label>Parcela Atual</Label>
-                <Input value={parcelaAtual} onChange={(e) => setParcelaAtual(e.target.value)} placeholder="1" />
+                <Label>Cartão Utilizado</Label>
+                <Input value={cartao} onChange={(e) => setCartao(e.target.value)} placeholder="Ex: Nubank, Santander..." />
               </div>
-              <div className="space-y-2">
-                <Label>Total Parcelas</Label>
-                <Input value={totalParcelas} onChange={(e) => setTotalParcelas(e.target.value)} placeholder="3" />
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <Label>Valor Parcela (R$)</Label>
+                  <Input value={valorParcela} onChange={(e) => setValorParcela(e.target.value)} placeholder="100" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Parcela Atual</Label>
+                  <Input value={parcelaAtual} onChange={(e) => setParcelaAtual(e.target.value)} placeholder="1" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Total Parcelas</Label>
+                  <Input value={totalParcelas} onChange={(e) => setTotalParcelas(e.target.value)} placeholder="3" />
+                </div>
               </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} className="bg-emerald-600 hover:bg-emerald-700 text-white">Salvar</Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+              <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">Salvar</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
