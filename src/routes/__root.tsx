@@ -73,6 +73,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  ssr: false, // Desativa SSR para esta árvore de rotas
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -141,19 +142,21 @@ function RootComponent() {
           queryClient.invalidateQueries();
         }
       });
-      (window as any).__authSub = sub;
+      if (typeof window !== "undefined") {
+        (window as any).__authSub = sub;
+      }
     });
     return () => {
       mounted = false;
-      try { (window as any).__authSub?.subscription?.unsubscribe?.(); } catch {}
+      if (typeof window !== "undefined") {
+        try { (window as any).__authSub?.subscription?.unsubscribe?.(); } catch {}
+      }
     };
   }, [queryClient, router]);
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
     </QueryClientProvider>
   );
 }
-
