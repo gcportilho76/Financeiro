@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CreditCard, Landmark, Receipt, ListFilter, Plus, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
@@ -79,6 +79,13 @@ const vazio = (bloco: Bloco): FormState => ({
 const LOCAL_STORAGE_KEY = "gute_cartoes_parcelados_v7";
 
 export function ComprometidosPanel({ comp, contratos }: { comp?: string; contratos?: any[] }) {
+  const [isClient, setIsClient] = useState(false);
+
+  // Garante que a leitura do LocalStorage só ocorra no navegador (evita erro 500 no SSR)
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   const compSegura = comp || "2026-10";
 
   const alvo = useMemo(() => {
@@ -112,10 +119,11 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
           despesas: despesas.data ?? [],
         };
       } catch (e) {
-        console.error("Erro na busca do Supabase:", e);
+        console.error("Erro no Supabase:", e);
         return { cartoes: [], despesas: [] };
       }
     },
+    enabled: isClient,
   });
 
   const refresh = () => {
@@ -124,14 +132,18 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
   };
 
   const linhas = useMemo<Linha[]>(() => {
+    if (!isClient) return [];
+
     const out: Linha[] = [];
 
     // 1. Processa Cartões de Crédito (localStorage + Supabase)
     let listaCartoesRaw: any[] = [];
     try {
-      const local = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (local) {
-        listaCartoesRaw = JSON.parse(local);
+      if (typeof window !== "undefined") {
+        const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (local) {
+          listaCartoesRaw = JSON.parse(local);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -209,7 +221,7 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
     }
 
     return out.sort((a, b) => b.valor - a.valor);
-  }, [data, contratos, alvoStr, alvoMesesInt]);
+  }, [data, contratos, alvoStr, alvoMesesInt, isClient]);
 
   const totalPor = (b: Bloco) =>
     linhas.filter((l) => l.bloco === b).reduce((s, l) => s + l.valor, 0);
@@ -284,13 +296,15 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
         };
 
         try {
-          const local = localStorage.getItem(LOCAL_STORAGE_KEY);
-          let prev: any[] = local ? JSON.parse(local) : [];
-          const existe = prev.some((c) => c.id === idNovo);
-          const lista = existe
-            ? prev.map((c) => (c.id === idNovo ? novoItem : c))
-            : [...prev, novoItem];
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(lista));
+          if (typeof window !== "undefined") {
+            const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+            let prev: any[] = local ? JSON.parse(local) : [];
+            const existe = prev.some((c) => c.id === idNovo);
+            const lista = existe
+              ? prev.map((c) => (c.id === idNovo ? novoItem : c))
+              : [...prev, novoItem];
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(lista));
+          }
         } catch (e) {
           console.error(e);
         }
@@ -370,11 +384,13 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
     try {
       if (l.bloco === "cartoes") {
         try {
-          const local = localStorage.getItem(LOCAL_STORAGE_KEY);
-          if (local) {
-            const prev: any[] = JSON.parse(local);
-            const filtrados = prev.filter((item) => String(item.id) !== String(l.id));
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtrados));
+          if (typeof window !== "undefined") {
+            const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+            if (local) {
+              const prev: any[] = JSON.parse(local);
+              const filtrados = prev.filter((item) => String(item.id) !== String(l.id));
+              localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtrados));
+            }
           }
         } catch (e) {
           console.error(e);
@@ -407,6 +423,14 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
       return alvo;
     }
   }, [alvo]);
+
+  if (!isClient) {
+    return (
+      <Card className="p-5 bg-card border-border">
+        <div className="py-8 text-center text-sm text-muted-foreground">Carregando painel…</div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-5 bg-card border-border">
@@ -559,163 +583,4 @@ export function ComprometidosPanel({ comp, contratos }: { comp?: string; contrat
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
                 <th className="py-2 pr-3 font-medium">Lançamento</th>
                 <th className="py-2 pr-3 font-medium">Origem</th>
-                <th className="py-2 pr-3 font-medium">Categoria</th>
-                <th className="py-2 pr-3 font-medium">Parcela</th>
-                <th className="py-2 pr-3 text-right font-medium">Valor</th>
-                <th className="py-2 text-right font-medium">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visiveis.map((l) => (
-                <tr key={`${l.bloco}-${l.id}`} className="border-b border-border/60">
-                  <td className="py-2 pr-3">{l.descricao}</td>
-                  <td className="py-2 pr-3 text-muted-foreground">{l.origem}</td>
-                  <td className="py-2 pr-3">
-                    <Badge variant="outline" className="text-[11px]">{l.categoria}</Badge>
-                  </td>
-                  <td className="py-2 pr-3 tabular text-muted-foreground">{l.parcela}</td>
-                  <td className="py-2 pr-3 text-right tabular font-medium">{BRL(l.valor)}</td>
-                  <td className="py-2 text-right whitespace-nowrap">
-                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => abrirEdicao(l)}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => excluir(l)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td className="py-3 pr-3 font-semibold" colSpan={3}>
-                  Total ({visiveis.length} lançamento{visiveis.length !== 1 ? "s" : ""})
-                </td>
-                <td />
-                <td className="py-3 pr-3 text-right font-bold tabular">{BRL(total)}</td>
-                <td />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-
-      <Dialog open={!!form} onOpenChange={(o) => !o && setForm(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {form?.id ? "Editar lançamento" : "Novo comprometido"} — {tituloFormatado}
-            </DialogTitle>
-          </DialogHeader>
-          {form && (
-            <div className="space-y-3">
-              {!form.id && (
-                <div>
-                  <Label>Tipo de lançamento</Label>
-                  <Select
-                    value={form.bloco}
-                    onValueChange={(v) => setForm({ ...vazio(v as Bloco) })}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cartoes">Cartão</SelectItem>
-                      <SelectItem value="despesas">Despesa</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <div>
-                <Label>Descrição</Label>
-                <Input
-                  value={form.descricao}
-                  onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-                  placeholder="Ex.: Mentoria Run"
-                />
-              </div>
-
-              {form.bloco === "cartoes" && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Cartão</Label>
-                    <Input value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label>Categoria</Label>
-                    <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label>Parcela atual</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={form.parcela_num}
-                      onChange={(e) => setForm({ ...form, parcela_num: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Total de parcelas</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={form.parcela_total}
-                      onChange={(e) => setForm({ ...form, parcela_total: e.target.value })}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {form.bloco === "despesas" && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Categoria</Label>
-                    <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label>Tipo</Label>
-                    <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="fixa">Fixa</SelectItem>
-                        <SelectItem value="variavel">Variável</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-
-              {form.bloco === "consignados" && (
-                <div>
-                  <Label>Total de parcelas</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={form.parcela_total}
-                    onChange={(e) => setForm({ ...form, parcela_total: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Editar aqui altera o contrato do consignado.
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <Label>Valor (R$)</Label>
-                <Input
-                  inputMode="decimal"
-                  value={form.valor}
-                  onChange={(e) => setForm({ ...form, valor: e.target.value })}
-                  placeholder="0,00"
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setForm(null)}>Cancelar</Button>
-            <Button onClick={salvar} disabled={saving}>{saving ? "Salvando…" : "Salvar"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </Card>
-  );
-}
+                <th className="py-2 pr-3 font
