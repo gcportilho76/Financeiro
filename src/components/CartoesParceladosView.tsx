@@ -1,10 +1,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { CreditCard, TrendingDown, Plus, Pencil, Trash2, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { CreditCard, TrendingDown, Plus, Pencil, Trash2, CheckCircle2, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -24,7 +21,7 @@ interface CartoesParceladosViewProps {
   onSaved?: () => void;
 }
 
-const LOCAL_STORAGE_KEY = "gute_cartoes_parcelados_v6";
+const LOCAL_STORAGE_KEY = "gute_cartoes_parcelados_v7";
 
 export function CartoesParceladosView({ data, comp, onSaved }: CartoesParceladosViewProps) {
   const mesAtualStr = (comp || "2026-10").slice(0, 7);
@@ -84,7 +81,9 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
     setFormAberto(true);
   };
 
-  const executarSalvar = async () => {
+  const handleSubmitForm = (e: React.FormEvent) => {
+    e.preventDefault();
+
     if (!descricao.trim()) {
       toast.error("Informe a descrição da compra");
       return;
@@ -110,58 +109,57 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
       mes_inicio: mesAtualStr,
     };
 
-    setCompras((prev) => {
-      const existe = prev.some((c) => c.id === idItem);
-      const lista = existe
-        ? prev.map((c) => (c.id === idItem ? novoItem : c))
-        : [...prev, novoItem];
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(lista));
-      return lista;
-    });
+    // 1. Atualização Imediata e Síncrona da UI
+    const listaAtualizada = editingId
+      ? compras.map((c) => (c.id === editingId ? novoItem : c))
+      : [...compras, novoItem];
 
+    setCompras(listaAtualizada);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(listaAtualizada));
     setFormAberto(false);
     toast.success("Compra parcelada salva!");
 
-    try {
-      const { data: u } = await supabase.auth.getUser();
-      if (u?.user) {
-        const payload = {
-          user_id: u.user.id,
-          descricao: novoItem.descricao,
-          cartao: novoItem.cartao,
-          valor: novoItem.valor_parcela,
-          valor_parcela: novoItem.valor_parcela,
-          parcela_num: novoItem.parcela_atual,
-          parcela_atual: novoItem.parcela_atual,
-          parcela_total: novoItem.total_parcelas,
-          total_parcelas: novoItem.total_parcelas,
-          competencia: novoItem.mes_inicio,
-          mes_inicio: novoItem.mes_inicio,
-          status: "PENDENTE",
-          ativo: true,
-        };
+    // 2. Envio Assíncrono para o Supabase sem bloquear a interface
+    (async () => {
+      try {
+        const { data: u } = await supabase.auth.getUser();
+        if (u?.user) {
+          const payload = {
+            user_id: u.user.id,
+            descricao: novoItem.descricao,
+            cartao: novoItem.cartao,
+            valor: novoItem.valor_parcela,
+            valor_parcela: novoItem.valor_parcela,
+            parcela_num: novoItem.parcela_atual,
+            parcela_atual: novoItem.parcela_atual,
+            parcela_total: novoItem.total_parcelas,
+            total_parcelas: novoItem.total_parcelas,
+            competencia: novoItem.mes_inicio,
+            mes_inicio: novoItem.mes_inicio,
+            status: "PENDENTE",
+            ativo: true,
+          };
 
-        if (editingId && !editingId.startsWith("parcela_")) {
-          await supabase.from("cartoes_lancamentos").update(payload).eq("id", editingId);
-        } else {
-          await supabase.from("cartoes_lancamentos").insert([payload]);
+          if (editingId && !editingId.startsWith("parcela_")) {
+            await supabase.from("cartoes_lancamentos").update(payload).eq("id", editingId);
+          } else {
+            await supabase.from("cartoes_lancamentos").insert([payload]);
+          }
         }
+      } catch (err) {
+        console.warn("Sincronização em segundo plano:", err);
       }
-    } catch (err) {
-      console.warn("Sincronização Supabase em background:", err);
-    }
 
-    if (onSaved) onSaved();
+      if (onSaved) onSaved();
+    })();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Deseja realmente remover esta compra parcelada?")) return;
 
-    setCompras((prev) => {
-      const lista = prev.filter((item) => item.id !== id);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(lista));
-      return lista;
-    });
+    const listaAtualizada = compras.filter((item) => item.id !== id);
+    setCompras(listaAtualizada);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(listaAtualizada));
 
     if (!id.startsWith("parcela_")) {
       try {
@@ -235,51 +233,106 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
         <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
           <CreditCard className="w-5 h-5 text-primary" /> Cronograma de Quitação de Compras Parceladas
         </h2>
-        <Button onClick={abrirNovo} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+        <button
+          type="button"
+          onClick={abrirNovo}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm transition-colors cursor-pointer"
+        >
           <Plus className="w-4 h-4" /> Nova Compra Parcelada
-        </Button>
+        </button>
       </div>
 
       {formAberto && (
         <Card className="p-5 bg-card border-2 border-emerald-500/50 space-y-4">
-          <div className="flex justify-between items-center border-b border-border pb-2">
-            <h3 className="font-bold text-lg text-foreground">
-              {editingId ? "Editar Compra Parcelada" : "Nova Compra Parcelada"}
-            </h3>
-            <Button variant="ghost" size="sm" onClick={() => setFormAberto(false)}>
-              <ChevronUp className="w-4 h-4 mr-1" /> Fechar
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label>Descrição da Compra</Label>
-              <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex: Notebook, Celular..." />
+          <form onSubmit={handleSubmitForm} className="space-y-4">
+            <div className="flex justify-between items-center border-b border-border pb-2">
+              <h3 className="font-bold text-lg text-foreground">
+                {editingId ? "Editar Compra Parcelada" : "Nova Compra Parcelada"}
+              </h3>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
+                onClick={() => setFormAberto(false)}
+              >
+                <ChevronUp className="w-4 h-4" /> Fechar
+              </button>
             </div>
-            <div>
-              <Label>Cartão Utilizado</Label>
-              <Input value={cartao} onChange={(e) => setCartao(e.target.value)} placeholder="Ex: Nubank, Santander..." />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1">Descrição da Compra</label>
+                <input
+                  type="text"
+                  required
+                  value={descricao}
+                  onChange={(e) => setDescricao(e.target.value)}
+                  placeholder="Ex: Notebook, Celular..."
+                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1">Cartão Utilizado</label>
+                <input
+                  type="text"
+                  value={cartao}
+                  onChange={(e) => setCartao(e.target.value)}
+                  placeholder="Ex: Nubank, Santander..."
+                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
             </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label>Valor Parcela (R$)</Label>
-              <Input value={valorParcela} onChange={(e) => setValorParcela(e.target.value)} placeholder="100" />
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1">Valor Parcela (R$)</label>
+                <input
+                  type="text"
+                  required
+                  value={valorParcela}
+                  onChange={(e) => setValorParcela(e.target.value)}
+                  placeholder="100"
+                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1">Parcela Atual</label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={parcelaAtual}
+                  onChange={(e) => setParcelaAtual(e.target.value)}
+                  placeholder="1"
+                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1">Total Parcelas</label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={totalParcelas}
+                  onChange={(e) => setTotalParcelas(e.target.value)}
+                  placeholder="3"
+                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
             </div>
-            <div>
-              <Label>Parcela Atual</Label>
-              <Input value={parcelaAtual} onChange={(e) => setParcelaAtual(e.target.value)} placeholder="1" />
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setFormAberto(false)}
+                className="px-4 py-2 rounded-md border border-input bg-background hover:bg-accent text-foreground text-sm font-medium cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm cursor-pointer transition-colors"
+              >
+                Salvar Lançamento
+              </button>
             </div>
-            <div>
-              <Label>Total Parcelas</Label>
-              <Input value={totalParcelas} onChange={(e) => setTotalParcelas(e.target.value)} placeholder="3" />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setFormAberto(false)}>Cancelar</Button>
-            <Button onClick={executarSalvar} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
-              Salvar Lançamento
-            </Button>
-          </div>
+          </form>
         </Card>
       )}
 
@@ -348,12 +401,20 @@ export function CartoesParceladosView({ data, comp, onSaved }: CartoesParcelados
                     <span className="text-emerald-500 font-medium text-xs sm:text-sm">
                       Quita em: {c.fimEstimado} ({c.parcelaAtual}/{c.totalParcelas} — {c.parcelasRestantes === 0 ? "Última parcela!" : `faltam ${c.parcelasRestantes} parcelas`})
                     </span>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => abrirEdicao(c.rawItem)}>
+                    <button
+                      type="button"
+                      className="p-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                      onClick={() => abrirEdicao(c.rawItem)}
+                    >
                       <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive/80" onClick={() => handleDelete(c.id)}>
+                    </button>
+                    <button
+                      type="button"
+                      className="p-1 text-destructive hover:text-destructive/80 cursor-pointer"
+                      onClick={() => handleDelete(c.id)}
+                    >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                    </button>
                   </div>
                 </div>
                 <Progress value={c.progresso} className="h-2 bg-secondary" />
