@@ -1,428 +1,695 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { CreditCard, TrendingDown, Plus, Pencil, Trash2, CheckCircle2, ChevronUp } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CreditCard, Landmark, Receipt, ListFilter, Plus, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { BRL, formatCompetencia, proxCompetencia } from "@/lib/finance";
 
-interface CompraParceladaItem {
+type Filtro = "todos" | "cartoes" | "consignados" | "despesas";
+type Bloco = "cartoes" | "consignados" | "despesas";
+
+type Linha = {
   id: string;
+  bloco: Bloco;
+  origem: string;
   descricao: string;
-  cartao?: string;
-  valor_parcela: number;
-  parcela_atual: number;
-  total_parcelas: number;
-  mes_inicio?: string;
+  categoria: string;
+  parcela: string;
+  parcela_num: number;
+  parcela_total: number;
+  tipo?: string;
+  valor: number;
+};
+
+type FormState = {
+  bloco: Bloco;
+  id: string | null;
+  origem: string;
+  descricao: string;
+  categoria: string;
+  valor: string;
+  parcela_num: string;
+  parcela_total: string;
+  tipo: string;
+};
+
+function limparParcela(desc: string) {
+  return desc.replace(/\s*\(\d+\/\d+\)\s*$/, "").trim();
 }
 
-interface CartoesParceladosViewProps {
-  data?: any;
-  comp?: string;
-  onSaved?: () => void;
-}
+const compParaMeses = (c: string) => {
+  const [ano, mes] = c.split("-").map(Number);
+  if (isNaN(ano) || isNaN(mes)) return 0;
+  return ano * 12 + mes;
+};
+
+const vazio = (bloco: Bloco): FormState => ({
+  bloco,
+  id: null,
+  origem: bloco === "cartoes" ? "Geral" : "",
+  descricao: "",
+  categoria: bloco === "cartoes" ? "Cartão" : "Outros",
+  valor: "",
+  parcela_num: "1",
+  parcela_total: "1",
+  tipo: "variavel",
+});
 
 const LOCAL_STORAGE_KEY = "gute_cartoes_parcelados_v7";
 
-export function CartoesParceladosView({ data, comp, onSaved }: CartoesParceladosViewProps) {
-  const mesAtualStr = (comp || "2026-10").slice(0, 7);
+export function ComprometidosPanel({ comp, contratos }: { comp: string; contratos: any[] }) {
+  const alvo = proxCompetencia(comp);
+  const alvoStr = alvo.slice(0, 7);
+  const alvoMesesInt = compParaMeses(alvoStr);
 
-  const [compras, setCompras] = useState<CompraParceladaItem[]>(() => {
+  const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [expandido, setExpandido] = useState<Bloco | null>(null);
+  const [form, setForm] = useState<FormState | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [busca, setBusca] = useState<Record<Bloco, string>>({ cartoes: "", consignados: "", despesas: "" });
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["comprometidos", alvo],
+    queryFn: async () => {
+      const [cartoes, despesas] = await Promise.all([
+        supabase.from("cartoes_lancamentos").select("*").eq("ativo", true),
+        supabase.from("despesas").select("*").eq("competencia", alvo),
+      ]);
+      return {
+        cartoes: cartoes.data ?? [],
+        despesas: despesas.data ?? [],
+      };
+    },
+  });
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["comprometidos"] });
+    qc.invalidateQueries({ queryKey: ["fin"] });
+  };
+
+  const linhas = useMemo<Linha[]>(() => {
+    const out: Linha[] = [];
+
+    // 1. Puxa do localStorage e une com os dados do Supabase
+    let listaCartoesRaw: any[] = [];
     try {
       const local = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (local) return JSON.parse(local);
+      if (local) {
+        listaCartoesRaw = JSON.parse(local);
+      }
     } catch (e) {
       console.error(e);
     }
-    return [];
-  });
 
-  useEffect(() => {
-    if (data?.cartoesLancamentos && Array.isArray(data.cartoesLancamentos) && data.cartoesLancamentos.length > 0) {
-      const convertidos = data.cartoesLancamentos.map((c: any) => ({
-        id: String(c.id),
-        descricao: c.descricao || "",
-        cartao: c.cartao || "Cartão",
-        valor_parcela: Number(c.valor_parcela || c.valor) || 0,
-        parcela_atual: Number(c.parcela_atual || c.parcela_num) || 1,
-        total_parcelas: Number(c.total_parcelas || c.parcela_total) || 1,
-        mes_inicio: (c.mes_inicio || c.competencia || mesAtualStr).slice(0, 7),
-      }));
-      setCompras(convertidos);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(convertidos));
+    const mapCartoes = new Map<string, any>();
+    for (const item of listaCartoesRaw) {
+      mapCartoes.set(String(item.id), item);
     }
-  }, [data, mesAtualStr]);
+    for (const item of data?.cartoes ?? []) {
+      if (!mapCartoes.has(String(item.id))) {
+        mapCartoes.set(String(item.id), item);
+      }
+    }
 
-  const [formAberto, setFormAberto] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+    // Calcula as parcelas ativas no mês-alvo
+    for (const c of Array.from(mapCartoes.values())) {
+      const pInicial = Number(c.parcela_atual || c.parcela_num) || 1;
+      const pTotal = Number(c.total_parcelas || c.parcela_total) || 1;
+      const mesInicioStr = (c.mes_inicio || c.competencia || alvoStr).slice(0, 7);
 
-  const [descricao, setDescricao] = useState("");
-  const [cartao, setCartao] = useState("");
-  const [valorParcela, setValorParcela] = useState("");
-  const [totalParcelas, setTotalParcelas] = useState("3");
-  const [parcelaAtual, setParcelaAtual] = useState("1");
+      const mesInicioInt = compParaMeses(mesInicioStr);
+      const pCalculada = pInicial + (alvoMesesInt - mesInicioInt);
+
+      if (pCalculada >= 1 && pCalculada <= pTotal) {
+        const vParc = Number(c.valor_parcela || c.valor) || 0;
+        out.push({
+          id: String(c.id),
+          bloco: "cartoes",
+          origem: c.cartao || "Cartão",
+          descricao: limparParcela(c.descricao || ""),
+          categoria: c.categoria || "Cartão",
+          parcela: `${pCalculada}/${pTotal}`,
+          parcela_num: pCalculada,
+          parcela_total: pTotal,
+          valor: vParc,
+        });
+      }
+    }
+
+    // 2. Processa Consignados Ativos
+    for (const ct of contratos ?? []) {
+      if (!ct.ativo) continue;
+      const prox = Number(ct.parcela_atual) + 1;
+      if (prox > Number(ct.total_parcelas)) continue;
+      out.push({
+        id: String(ct.id),
+        bloco: "consignados",
+        origem: ct.banco ?? "Consignado",
+        descricao: ct.nome,
+        categoria: "Consignado",
+        parcela: `${prox}/${ct.total_parcelas}`,
+        parcela_num: prox,
+        parcela_total: Number(ct.total_parcelas),
+        valor: Number(ct.valor_parcela),
+      });
+    }
+
+    // 3. Processa Despesas do Mês
+    for (const d of data?.despesas ?? []) {
+      out.push({
+        id: String(d.id),
+        bloco: "despesas",
+        origem: d.tipo === "fixa" ? "Despesa fixa" : "Despesa variável",
+        descricao: d.descricao,
+        categoria: d.categoria,
+        parcela: "—",
+        parcela_num: 1,
+        parcela_total: 1,
+        tipo: d.tipo,
+        valor: Number(d.valor),
+      });
+    }
+
+    return out.sort((a, b) => b.valor - a.valor);
+  }, [data, contratos, alvoStr, alvoMesesInt]);
+
+  const totalPor = (b: Bloco) =>
+    linhas.filter((l) => l.bloco === b).reduce((s, l) => s + l.valor, 0);
+
+  const visiveis = filtro === "todos" ? linhas : linhas.filter((l) => l.bloco === filtro);
+  const total = visiveis.reduce((s, l) => s + l.valor, 0);
+
+  const filtros: { id: Filtro; label: string; icon: any; total: number }[] = [
+    { id: "todos", label: "Todos", icon: <ListFilter className="w-4 h-4" />, total: linhas.reduce((s, l) => s + l.valor, 0) },
+    { id: "cartoes", label: "Cartões", icon: <CreditCard className="w-4 h-4" />, total: totalPor("cartoes") },
+    { id: "consignados", label: "Consignados", icon: <Landmark className="w-4 h-4" />, total: totalPor("consignados") },
+    { id: "despesas", label: "Despesas", icon: <Receipt className="w-4 h-4" />, total: totalPor("despesas") },
+  ];
+
+  const totalGeral = linhas.reduce((s, l) => s + l.valor, 0);
+
+  const resumo = useMemo(() => {
+    const base: { id: Filtro; label: string; barra: string; total: number }[] = [
+      { id: "cartoes", label: "Cartões", barra: "bg-chart-2", total: totalPor("cartoes") },
+      { id: "consignados", label: "Consignados", barra: "bg-chart-4", total: totalPor("consignados") },
+      { id: "despesas", label: "Despesas", barra: "bg-chart-3", total: totalPor("despesas") },
+    ];
+    const maiorPct = totalGeral > 0 ? Math.max(...base.map((b) => (b.total / totalGeral) * 100)) : 0;
+    return base.map((b) => {
+      const pct = totalGeral > 0 ? (b.total / totalGeral) * 100 : 0;
+      return { ...b, pct, diff: totalGeral > 0 ? pct - maiorPct : null };
+    });
+  }, [linhas, totalGeral]);
 
   const abrirNovo = () => {
-    setEditingId(null);
-    setDescricao("");
-    setCartao("");
-    setValorParcela("");
-    setTotalParcelas("3");
-    setParcelaAtual("1");
-    setFormAberto(true);
+    const bloco: Bloco = filtro === "despesas" ? "despesas" : "cartoes";
+    setForm(vazio(bloco));
   };
 
-  const abrirEdicao = (item: CompraParceladaItem) => {
-    setEditingId(item.id);
-    setDescricao(item.descricao || "");
-    setCartao(item.cartao || "");
-    setValorParcela(String(item.valor_parcela || ""));
-    setTotalParcelas(String(item.total_parcelas || "3"));
-    setParcelaAtual(String(item.parcela_atual || "1"));
-    setFormAberto(true);
+  const abrirEdicao = (l: Linha) => {
+    setForm({
+      bloco: l.bloco,
+      id: l.id,
+      origem: l.origem,
+      descricao: l.descricao,
+      categoria: l.categoria,
+      valor: String(l.valor),
+      parcela_num: String(l.parcela_num),
+      parcela_total: String(l.parcela_total),
+      tipo: l.tipo ?? "variavel",
+    });
   };
 
-  const handleSubmitForm = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!descricao.trim()) {
-      toast.error("Informe a descrição da compra");
+  const salvar = async () => {
+    if (!form) return;
+    const valor = Number(String(form.valor).replace(",", "."));
+    if (!form.descricao.trim() || !Number.isFinite(valor) || valor <= 0) {
+      toast.error("Informe descrição e valor válidos.");
       return;
     }
+    setSaving(true);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      const uid = u.user?.id;
 
-    const vParc = parseFloat(String(valorParcela).replace(",", "."));
-    if (isNaN(vParc) || vParc <= 0) {
-      toast.error("Informe um valor de parcela válido");
-      return;
-    }
+      if (form.bloco === "cartoes") {
+        const idNovo = form.id || "parcela_" + Date.now();
+        const novoItem = {
+          id: idNovo,
+          descricao: form.descricao.trim(),
+          cartao: form.origem || "Cartão",
+          categoria: form.categoria || "Cartão",
+          valor_parcela: valor,
+          parcela_atual: Number(form.parcela_num) || 1,
+          total_parcelas: Number(form.parcela_total) || 1,
+          mes_inicio: alvoStr,
+        };
 
-    const pAtual = parseInt(String(parcelaAtual), 10) || 1;
-    const pTotal = parseInt(String(totalParcelas), 10) || 1;
+        try {
+          const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+          let prev: any[] = local ? JSON.parse(local) : [];
+          const existe = prev.some((c) => c.id === idNovo);
+          const lista = existe
+            ? prev.map((c) => (c.id === idNovo ? novoItem : c))
+            : [...prev, novoItem];
+          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(lista));
+        } catch (e) {
+          console.error(e);
+        }
 
-    const idItem = editingId || "parcela_" + Date.now();
-    const novoItem: CompraParceladaItem = {
-      id: idItem,
-      descricao: descricao.trim(),
-      cartao: cartao.trim() || "Cartão",
-      valor_parcela: vParc,
-      parcela_atual: pAtual,
-      total_parcelas: pTotal,
-      mes_inicio: mesAtualStr,
-    };
-
-    // 1. Atualização Imediata e Síncrona da UI
-    const listaAtualizada = editingId
-      ? compras.map((c) => (c.id === editingId ? novoItem : c))
-      : [...compras, novoItem];
-
-    setCompras(listaAtualizada);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(listaAtualizada));
-    setFormAberto(false);
-    toast.success("Compra parcelada salva!");
-
-    // 2. Envio Assíncrono para o Supabase sem bloquear a interface
-    (async () => {
-      try {
-        const { data: u } = await supabase.auth.getUser();
-        if (u?.user) {
+        if (uid) {
           const payload = {
-            user_id: u.user.id,
-            descricao: novoItem.descricao,
-            cartao: novoItem.cartao,
-            valor: novoItem.valor_parcela,
-            valor_parcela: novoItem.valor_parcela,
-            parcela_num: novoItem.parcela_atual,
-            parcela_atual: novoItem.parcela_atual,
-            parcela_total: novoItem.total_parcelas,
-            total_parcelas: novoItem.total_parcelas,
-            competencia: novoItem.mes_inicio,
-            mes_inicio: novoItem.mes_inicio,
-            status: "PENDENTE",
-            ativo: true,
+            cartao: form.origem || "Geral",
+            descricao: form.descricao.trim(),
+            categoria: form.categoria || "Cartão",
+            valor,
+            valor_parcela: valor,
+            parcela_num: Number(form.parcela_num) || 1,
+            parcela_atual: Number(form.parcela_num) || 1,
+            parcela_total: Number(form.parcela_total) || 1,
+            total_parcelas: Number(form.parcela_total) || 1,
           };
 
-          if (editingId && !editingId.startsWith("parcela_")) {
-            await supabase.from("cartoes_lancamentos").update(payload).eq("id", editingId);
+          if (form.id && !form.id.startsWith("parcela_")) {
+            await supabase.from("cartoes_lancamentos").update(payload).eq("id", form.id);
           } else {
-            await supabase.from("cartoes_lancamentos").insert([payload]);
+            await supabase.from("cartoes_lancamentos").insert({
+              ...payload,
+              user_id: uid,
+              competencia: alvo,
+              mes_inicio: alvo,
+              status: "PENDENTE",
+              ativo: true,
+            });
           }
         }
-      } catch (err) {
-        console.warn("Sincronização em segundo plano:", err);
+      } else if (form.bloco === "despesas") {
+        if (!uid) throw new Error("Sessão expirada.");
+        const payload = {
+          descricao: form.descricao.trim(),
+          categoria: form.categoria || "Outros",
+          valor,
+          tipo: form.tipo,
+        };
+        const { error } = form.id
+          ? await supabase.from("despesas").update(payload).eq("id", form.id)
+          : await supabase.from("despesas").insert({
+              ...payload,
+              user_id: uid,
+              competencia: alvo,
+              data_venc: alvo,
+              status: "PENDENTE",
+            });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("consignados_contratos")
+          .update({
+            nome: form.descricao.trim(),
+            valor_parcela: valor,
+            total_parcelas: Number(form.parcela_total) || 1,
+          })
+          .eq("id", form.id!);
+        if (error) throw error;
       }
 
-      if (onSaved) onSaved();
-    })();
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Deseja realmente remover esta compra parcelada?")) return;
-
-    const listaAtualizada = compras.filter((item) => item.id !== id);
-    setCompras(listaAtualizada);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(listaAtualizada));
-
-    if (!id.startsWith("parcela_")) {
-      try {
-        await supabase.from("cartoes_lancamentos").delete().eq("id", id);
-      } catch (e) {
-        console.error(e);
-      }
+      toast.success("Salvo com sucesso.");
+      setForm(null);
+      refresh();
+    } catch (e: any) {
+      toast.error(e.message ?? "Erro ao salvar.");
+    } finally {
+      setSaving(false);
     }
-
-    toast.success("Compra removida!");
-    if (onSaved) onSaved();
   };
 
-  const compParaMeses = (c: string) => {
-    const [ano, mes] = c.split("-").map(Number);
-    if (isNaN(ano) || isNaN(mes)) return 0;
-    return ano * 12 + mes;
+  const excluir = async (l: Linha) => {
+    const msg =
+      l.bloco === "consignados"
+        ? `Desativar o contrato "${l.descricao}"? Ele deixa de ser comprometido.`
+        : `Excluir "${l.descricao}"?`;
+    if (!confirm(msg)) return;
+    try {
+      if (l.bloco === "cartoes") {
+        try {
+          const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (local) {
+            const prev: any[] = JSON.parse(local);
+            const filtrados = prev.filter((item) => String(item.id) !== String(l.id));
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtrados));
+          }
+        } catch (e) {
+          console.error(e);
+        }
+
+        if (!l.id.startsWith("parcela_")) {
+          await supabase.from("cartoes_lancamentos").delete().eq("id", l.id);
+        }
+      } else if (l.bloco === "despesas") {
+        const { error } = await supabase.from("despesas").delete().eq("id", l.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("consignados_contratos")
+          .update({ ativo: false })
+          .eq("id", l.id);
+        if (error) throw error;
+      }
+      toast.success("Removido.");
+      refresh();
+    } catch (e: any) {
+      toast.error(e.message ?? "Erro ao remover.");
+    }
   };
-
-  const mesVisualizadoInt = compParaMeses(mesAtualStr);
-
-  const comprasProcessadas = compras.map((item) => {
-    const pInicial = Number(item.parcela_atual) || 1;
-    const pTotal = Number(item.total_parcelas) || 1;
-    const mesInicioStr = (item.mes_inicio || mesAtualStr).slice(0, 7);
-
-    const mesInicioInt = compParaMeses(mesInicioStr);
-    const mesesDecorridos = mesVisualizadoInt - mesInicioInt;
-    const pCalculada = pInicial + mesesDecorridos;
-
-    const isAtiva = pCalculada >= 1 && pCalculada <= pTotal;
-    const isQuitada = pCalculada > pTotal;
-
-    const valParc = Number(item.valor_parcela) || 0;
-    const valorParcela = isAtiva ? valParc : 0;
-    const parcelasRestantes = Math.max(0, pTotal - pCalculada);
-    const progresso = Math.min(100, Math.round((Math.max(1, Math.min(pCalculada, pTotal)) / pTotal) * 100));
-
-    const [anoBase, mesBase] = mesInicioStr.split("-").map(Number);
-    const dataTermino = new Date(anoBase || 2026, (mesBase || 10) - 1 + (pTotal - pInicial), 1);
-    const mesExtenso = dataTermino.toLocaleDateString("pt-BR", { month: "long" });
-    const mesFormatado = mesExtenso.charAt(0).toUpperCase() + mesExtenso.slice(1);
-
-    return {
-      rawItem: item,
-      id: item.id,
-      descricao: item.descricao,
-      cartao: item.cartao || "Cartão",
-      parcela: valorParcela,
-      valorOriginal: valParc,
-      parcelaAtual: pCalculada,
-      totalParcelas: pTotal,
-      parcelasRestantes,
-      progresso,
-      isAtiva,
-      isQuitada,
-      fimEstimado: `${mesFormatado}/${dataTermino.getFullYear()}`,
-    };
-  });
-
-  const comprasAtivasNoMes = comprasProcessadas.filter((c) => c.isAtiva);
-  const comprasQuitadasNoMes = comprasProcessadas.filter((c) => c.isQuitada);
-
-  const totalComprometidoCartao = comprasAtivasNoMes.reduce((acc, c) => acc + c.parcela, 0);
-  const proximaAQuitar = [...comprasAtivasNoMes].sort((a, b) => a.parcelasRestantes - b.parcelasRestantes)[0];
-  const totalEconomizadoLiberado = comprasQuitadasNoMes.reduce((acc, c) => acc + c.valorOriginal, 0);
 
   return (
-    <div className="space-y-6 mt-4">
-      <div className="flex justify-between items-center flex-wrap gap-2">
-        <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <CreditCard className="w-5 h-5 text-primary" /> Cronograma de Quitação de Compras Parceladas
-        </h2>
-        <button
-          type="button"
-          onClick={abrirNovo}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm transition-colors cursor-pointer"
-        >
-          <Plus className="w-4 h-4" /> Nova Compra Parcelada
-        </button>
+    <Card className="p-5 bg-card border-border">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            PARCELAS COMPROMETIDAS — <span className="capitalize">{formatCompetencia(alvo)}</span>
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Somente o que já está lançado/parcelado para o próximo mês.
+          </p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Total do filtro</div>
+            <div className="text-2xl font-bold tabular">{BRL(total)}</div>
+          </div>
+          <Button size="sm" onClick={abrirNovo}>
+            <Plus className="w-4 h-4 mr-1" /> Novo
+          </Button>
+        </div>
       </div>
 
-      {formAberto && (
-        <Card className="p-5 bg-card border-2 border-emerald-500/50 space-y-4">
-          <form onSubmit={handleSubmitForm} className="space-y-4">
-            <div className="flex justify-between items-center border-b border-border pb-2">
-              <h3 className="font-bold text-lg text-foreground">
-                {editingId ? "Editar Compra Parcelada" : "Nova Compra Parcelada"}
-              </h3>
-              <button
-                type="button"
-                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
-                onClick={() => setFormAberto(false)}
-              >
-                <ChevronUp className="w-4 h-4" /> Fechar
-              </button>
+      <div className="rounded-lg border border-border bg-muted/30 p-4 mb-4">
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Total geral comprometido</div>
+            <div className="text-3xl font-bold tabular">{BRL(totalGeral)}</div>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {linhas.length} lançamento{linhas.length !== 1 ? "s" : ""} em {formatCompetencia(alvo)}
+          </div>
+        </div>
+
+        {totalGeral > 0 && (
+          <>
+            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-border mb-3">
+              {resumo.map((r) => (
+                <div key={r.id} className={r.barra} style={{ width: `${r.pct}%` }} title={`${r.label}: ${r.pct.toFixed(1)}%`} />
+              ))}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1">Descrição da Compra</label>
-                <input
-                  type="text"
-                  required
-                  value={descricao}
-                  onChange={(e) => setDescricao(e.target.value)}
-                  placeholder="Ex: Notebook, Celular..."
-                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1">Cartão Utilizado</label>
-                <input
-                  type="text"
-                  value={cartao}
-                  onChange={(e) => setCartao(e.target.value)}
-                  placeholder="Ex: Nubank, Santander..."
-                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+              {resumo.map((r) => {
+                const bloco = r.id as Bloco;
+                const itens = linhas.filter((l) => l.bloco === bloco);
+                const termo = (busca[bloco] ?? "").trim().toLowerCase();
+                const itensFiltrados = termo
+                  ? itens.filter((l) =>
+                      [l.descricao, l.origem, l.parcela].some((v) => v.toLowerCase().includes(termo))
+                    )
+                  : itens;
+                const aberto = expandido === bloco;
+                return (
+                  <div key={r.id} className="rounded-md border border-border bg-card">
+                    <button
+                      onClick={() => setExpandido(aberto ? null : bloco)}
+                      className="w-full text-left p-3 hover:border-primary/50 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span className={`inline-block w-2.5 h-2.5 rounded-full ${r.barra}`} />
+                          {r.label}
+                        </div>
+                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${aberto ? "rotate-180" : ""}`} />
+                      </div>
+                      <div className="mt-1 text-lg font-semibold tabular">{BRL(r.total)}</div>
+                      <div className="text-xs text-muted-foreground tabular">
+                        {r.pct.toFixed(1)}% do total
+                        {r.diff !== null && (
+                          <span className="ml-1">
+                            · {r.diff >= 0 ? "+" : "−"}{Math.abs(r.diff).toFixed(1)} p.p. vs maior
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                        {itens.length} lançamento{itens.length !== 1 ? "s" : ""} · toque para {aberto ? "ocultar" : "ver"} a composição
+                      </div>
+                    </button>
+
+                    {aberto && (
+                      <div className="border-t border-border px-3 py-2">
+                        <div className="mb-2">
+                          <Input
+                            placeholder="Buscar descrição, origem ou parcela..."
+                            value={busca[bloco]}
+                            onChange={(e) => setBusca({ ...busca, [bloco]: e.target.value })}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        {itensFiltrados.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-1">Nenhum lançamento neste bloco.</p>
+                        ) : (
+                          <ul className="divide-y divide-border/60">
+                            {itensFiltrados.map((l) => (
+                              <li key={l.id} className="py-1.5 flex items-start justify-between gap-2 text-xs">
+                                <span className="min-w-0">
+                                  <span className="block truncate font-medium">{l.descricao}</span>
+                                  <span className="text-muted-foreground">
+                                    {l.origem}
+                                    {l.parcela !== "—" ? ` · ${l.parcela}` : ""}
+                                  </span>
+                                </span>
+                                <span className="tabular font-medium whitespace-nowrap">{BRL(l.valor)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="flex items-center justify-between pt-2 mt-1 border-t border-border text-xs font-semibold">
+                          <span>Subtotal ({itensFiltrados.length})</span>
+                          <span className="tabular">{BRL(itensFiltrados.reduce((s, l) => s + l.valor, 0))}</span>
+                        </div>
+                        <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => setFiltro(r.id)}>
+                          Filtrar tabela por {r.label}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1">Valor Parcela (R$)</label>
-                <input
-                  type="text"
-                  required
-                  value={valorParcela}
-                  onChange={(e) => setValorParcela(e.target.value)}
-                  placeholder="100"
-                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1">Parcela Atual</label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={parcelaAtual}
-                  onChange={(e) => setParcelaAtual(e.target.value)}
-                  placeholder="1"
-                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1">Total Parcelas</label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={totalParcelas}
-                  onChange={(e) => setTotalParcelas(e.target.value)}
-                  placeholder="3"
-                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-border">
-              <button
-                type="button"
-                onClick={() => setFormAberto(false)}
-                className="px-4 py-2 rounded-md border border-input bg-background hover:bg-accent text-foreground text-sm font-medium cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm cursor-pointer transition-colors"
-              >
-                Salvar Lançamento
-              </button>
-            </div>
-          </form>
-        </Card>
+          </>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        {filtros.map((f) => (
+          <Button
+            key={f.id}
+            size="sm"
+            variant={filtro === f.id ? "default" : "outline"}
+            onClick={() => setFiltro(f.id)}
+          >
+            <span className="mr-1.5">{f.icon}</span>
+            {f.label}
+            <span className="ml-2 tabular text-xs opacity-80">{BRL(f.total)}</span>
+          </Button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="py-8 text-center text-sm text-muted-foreground">Carregando…</div>
+      ) : visiveis.length === 0 ? (
+        <div className="py-8 text-center text-sm text-muted-foreground">
+          Nenhum lançamento comprometido neste filtro.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
+                <th className="py-2 pr-3 font-medium">Lançamento</th>
+                <th className="py-2 pr-3 font-medium">Origem</th>
+                <th className="py-2 pr-3 font-medium">Categoria</th>
+                <th className="py-2 pr-3 font-medium">Parcela</th>
+                <th className="py-2 pr-3 text-right font-medium">Valor</th>
+                <th className="py-2 text-right font-medium">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visiveis.map((l) => (
+                <tr key={`${l.bloco}-${l.id}`} className="border-b border-border/60">
+                  <td className="py-2 pr-3">{l.descricao}</td>
+                  <td className="py-2 pr-3 text-muted-foreground">{l.origem}</td>
+                  <td className="py-2 pr-3">
+                    <Badge variant="outline" className="text-[11px]">{l.categoria}</Badge>
+                  </td>
+                  <td className="py-2 pr-3 tabular text-muted-foreground">{l.parcela}</td>
+                  <td className="py-2 pr-3 text-right tabular font-medium">{BRL(l.valor)}</td>
+                  <td className="py-2 text-right whitespace-nowrap">
+                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => abrirEdicao(l)}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => excluir(l)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className="py-3 pr-3 font-semibold" colSpan={3}>
+                  Total ({visiveis.length} lançamento{visiveis.length !== 1 ? "s" : ""})
+                </td>
+                <td />
+                <td className="py-3 pr-3 text-right font-bold tabular">{BRL(total)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Parcelas Ativas neste Mês</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-500">
-              R$ {totalComprometidoCartao.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs font-normal text-muted-foreground">/mês</span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">{comprasAtivasNoMes.length} parcelas ativas no mês selecionado</p>
-          </CardContent>
-        </Card>
+      <Dialog open={!!form} onOpenChange={(o) => !o && setForm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {form?.id ? "Editar lançamento" : "Novo comprometido"} — {formatCompetencia(alvo)}
+            </DialogTitle>
+          </DialogHeader>
+          {form && (
+            <div className="space-y-3">
+              {!form.id && (
+                <div>
+                  <Label>Tipo de lançamento</Label>
+                  <Select
+                    value={form.bloco}
+                    onValueChange={(v) => setForm({ ...vazio(v as Bloco) })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cartoes">Cartão</SelectItem>
+                      <SelectItem value="despesas">Despesa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Próxima Redução na Fatura</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-500">
-              - R$ {proximaAQuitar ? proximaAQuitar.parcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0,00"} <span className="text-xs font-normal text-muted-foreground">/mês</span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {proximaAQuitar ? `${proximaAQuitar.descricao} · Quita em ${proximaAQuitar.fimEstimado}` : "Nenhuma compra a quitar"}
-            </p>
-          </CardContent>
-        </Card>
+              <div>
+                <Label>Descrição</Label>
+                <Input
+                  value={form.descricao}
+                  onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                  placeholder="Ex.: Mentoria Run"
+                />
+              </div>
 
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Margem Liberada</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-primary">
-              - R$ {totalEconomizadoLiberado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs font-normal text-muted-foreground">/mês</span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">{comprasQuitadasNoMes.length} compras parceladas já 100% quitadas</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <TrendingDown className="w-5 h-5 text-emerald-500" /> Parcelas no Mês Visualizado
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {comprasAtivasNoMes.length === 0 ? (
-            <div className="text-center py-8 space-y-2">
-              <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-              <p className="text-base font-medium text-foreground">Fatura 100% livre de parcelas antigas!</p>
-              <p className="text-sm text-muted-foreground">Todas as compras parceladas cadastradas já foram quitadas neste mês.</p>
-            </div>
-          ) : (
-            comprasAtivasNoMes.map((c) => (
-              <div key={c.id} className="space-y-2 border-b border-border/40 pb-4 last:border-0 last:pb-0">
-                <div className="flex justify-between items-center text-sm">
+              {form.bloco === "cartoes" && (
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <span className="font-semibold text-foreground">{c.descricao}</span>
-                    <span className="text-xs text-muted-foreground ml-2">({c.cartao}) — R$ {c.parcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mês</span>
+                    <Label>Cartão</Label>
+                    <Input value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })} />
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-emerald-500 font-medium text-xs sm:text-sm">
-                      Quita em: {c.fimEstimado} ({c.parcelaAtual}/{c.totalParcelas} — {c.parcelasRestantes === 0 ? "Última parcela!" : `faltam ${c.parcelasRestantes} parcelas`})
-                    </span>
-                    <button
-                      type="button"
-                      className="p-1 text-muted-foreground hover:text-foreground cursor-pointer"
-                      onClick={() => abrirEdicao(c.rawItem)}
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      className="p-1 text-destructive hover:text-destructive/80 cursor-pointer"
-                      onClick={() => handleDelete(c.id)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  <div>
+                    <Label>Categoria</Label>
+                    <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Parcela atual</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={form.parcela_num}
+                      onChange={(e) => setForm({ ...form, parcela_num: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Total de parcelas</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={form.parcela_total}
+                      onChange={(e) => setForm({ ...form, parcela_total: e.target.value })}
+                    />
                   </div>
                 </div>
-                <Progress value={c.progresso} className="h-2 bg-secondary" />
+              )}
+
+              {form.bloco === "despesas" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Categoria</Label>
+                    <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Tipo</Label>
+                    <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fixa">Fixa</SelectItem>
+                        <SelectItem value="variavel">Variável</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              {form.bloco === "consignados" && (
+                <div>
+                  <Label>Total de parcelas</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={form.parcela_total}
+                    onChange={(e) => setForm({ ...form, parcela_total: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Editar aqui altera o contrato do consignado.
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <Label>Valor (R$)</Label>
+                <Input
+                  inputMode="decimal"
+                  value={form.valor}
+                  onChange={(e) => setForm({ ...form, valor: e.target.value })}
+                  placeholder="0,00"
+                />
               </div>
-            ))
+            </div>
           )}
-        </CardContent>
-      </Card>
-    </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setForm(null)}>Cancelar</Button>
+            <Button onClick={salvar} disabled={saving}>{saving ? "Salvando…" : "Salvar"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
 }
