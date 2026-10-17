@@ -19,35 +19,9 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
-
-      if (response.status >= 500) {
-        const cloned = response.clone();
-        const bodyText = await cloned.text().catch(() => "");
-        if (bodyText.includes('"unhandled":true') || bodyText.includes('"message":"HTTPError"')) {
-          return new Response(
-            `<!DOCTYPE html>
-<html lang="pt-BR">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Caixa Vivo - Orçamento Gutê</title>
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
-</html>`,
-            {
-              status: 200,
-              headers: { "content-type": "text/html; charset=utf-8" },
-            }
-          );
-        }
-      }
-
-      return response;
+      return await handler.fetch(request, env, ctx);
     } catch (error) {
-      console.error("SSR Fallback acionado:", error);
+      console.error("Erro na resposta do SSR:", error);
       const handler = await getServerEntry();
       return await handler.fetch(request, env, ctx);
     }
