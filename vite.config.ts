@@ -8,7 +8,8 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
   tanstackStart: {
-    // Desativa o SSR para rodar 100% Client-Side e evitar o ReferenceError no Nitro/Vercel
-    ssr: false,
+    server: {
+      entry: "server",
+    },
   },
 });
