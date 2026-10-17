@@ -15,8 +15,18 @@ async function getServerEntry(): Promise<ServerEntry> {
   return serverEntryPromise;
 }
 
-function renderFallbackAppHtml() {
-  return `<!DOCTYPE html>
+export default {
+  async fetch(request: Request, env: unknown, ctx: unknown) {
+    try {
+      const handler = await getServerEntry();
+      const response = await handler.fetch(request, env, ctx);
+
+      if (response.status >= 500) {
+        const cloned = response.clone();
+        const bodyText = await cloned.text().catch(() => "");
+        if (bodyText.includes('"unhandled":true') || bodyText.includes('"message":"HTTPError"')) {
+          return new Response(
+            `<!DOCTYPE html>
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
@@ -25,36 +35,21 @@ function renderFallbackAppHtml() {
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/start.ts"></script>
   </body>
-</html>`;
-}
-
-export default {
-  async fetch(request: Request, env: unknown, ctx: unknown) {
-    try {
-      const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
-
-      // Intercepta qualquer resposta 500 ou JSON "unhandled" do H3 e devolve Status 200 HTML
-      if (response.status >= 500) {
-        const cloned = response.clone();
-        const bodyText = await cloned.text().catch(() => "");
-        if (bodyText.includes('"unhandled":true') || bodyText.includes('"message":"HTTPError"')) {
-          return new Response(renderFallbackAppHtml(), {
-            status: 200,
-            headers: { "content-type": "text/html; charset=utf-8" },
-          });
+</html>`,
+            {
+              status: 200,
+              headers: { "content-type": "text/html; charset=utf-8" },
+            }
+          );
         }
       }
 
       return response;
     } catch (error) {
-      console.error("SSR Handler Fallback acionado:", error);
-      return new Response(renderFallbackAppHtml(), {
-        status: 200,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      console.error("SSR Fallback acionado:", error);
+      const handler = await getServerEntry();
+      return await handler.fetch(request, env, ctx);
     }
   },
 };
