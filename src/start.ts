@@ -1,6 +1,6 @@
 import { createStart } from "@tanstack/react-start";
+import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
 
 export const startInstance = createStart(() => ({
-  // Desativa middlewares globais no SSR do servidor para evitar HTTPError 500
-  functionMiddleware: [],
+  functionMiddleware: [attachSupabaseAuth],
 }));
