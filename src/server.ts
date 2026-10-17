@@ -15,7 +15,7 @@ async function getServerEntry(): Promise<ServerEntry> {
   return serverEntryPromise;
 }
 
-function renderFallbackHtml() {
+function renderClientShellHtml() {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
   <head>
@@ -25,6 +25,7 @@ function renderFallbackHtml() {
   </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/src/router.tsx"></script>
   </body>
 </html>`;
 }
@@ -35,12 +36,11 @@ export default {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
 
-      // Se o handler do servidor retornar erro 500 ou o JSON do h3, força o retorno do HTML Shell 200
       if (response.status >= 500) {
         const cloned = response.clone();
         const bodyText = await cloned.text().catch(() => "");
         if (bodyText.includes('"unhandled":true') || bodyText.includes('"message":"HTTPError"')) {
-          return new Response(renderFallbackHtml(), {
+          return new Response(renderClientShellHtml(), {
             status: 200,
             headers: { "content-type": "text/html; charset=utf-8" },
           });
@@ -50,7 +50,7 @@ export default {
       return response;
     } catch (error) {
       console.error("SSR Fallback acionado no server.ts:", error);
-      return new Response(renderFallbackHtml(), {
+      return new Response(renderClientShellHtml(), {
         status: 200,
         headers: { "content-type": "text/html; charset=utf-8" },
       });
