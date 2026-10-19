@@ -1,7 +1,7 @@
-import { createTanStackStartClient } from "@tanstack/react-start/client";
+import { createStart } from "@tanstack/react-start";
 import { createRouter } from "./router";
 
-export const startInstance = createTanStackStartClient({
+export const startInstance = createStart({
   createRouter,
 });
 
