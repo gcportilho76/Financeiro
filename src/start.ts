@@ -1,4 +1,10 @@
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { RouterProvider } from "@tanstack/react-router";
 import { createRouter } from "./router";
+import "./index.css"; // Se o projeto usar styles.css, altere este import para "./styles.css"
+
+const router = createRouter();
 
 export const startInstance = {
   createRouter,
@@ -7,8 +13,13 @@ export const startInstance = {
 export default startInstance;
 
 if (typeof window !== "undefined") {
-  const router = createRouter();
-  router.load().then(() => {
-    router.hydrate();
-  });
+  const rootElement = document.getElementById("root");
+  if (rootElement && !rootElement.innerHTML) {
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(
+      <React.StrictMode>
+        <RouterProvider router={router} />
+      </React.StrictMode>
+    );
+  }
 }
