@@ -1,8 +1,7 @@
-import { createTanStackStartClient } from "@tanstack/react-start/client";
 import { createRouter } from "./router";
 
-export const startInstance = createTanStackStartClient({
+export const startInstance = {
   createRouter,
-});
+};
 
 export default startInstance;
