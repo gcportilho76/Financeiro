@@ -8,8 +8,5 @@ export default defineConfig({
   },
   nitro: {
     preset: "vercel",
-    prerender: {
-      routes: ["/"],
-    },
   },
 });
