@@ -2,7 +2,6 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import { createRouter } from "./router";
-import "./index.css"; // Se o projeto usar styles.css, altere este import para "./styles.css"
 
 const router = createRouter();
 
