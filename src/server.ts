@@ -17,7 +17,13 @@ async function getServerEntry(): Promise<ServerEntry> {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
-    const handler = await getServerEntry();
-    return await handler.fetch(request, env, ctx);
+    try {
+      const handler = await getServerEntry();
+      return await handler.fetch(request, env, ctx);
+    } catch (error) {
+      console.error("Erro no manipulador do servidor:", error);
+      const handler = await getServerEntry();
+      return await handler.fetch(request, env, ctx);
+    }
   },
 };
