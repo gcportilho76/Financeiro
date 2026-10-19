@@ -1,28 +1,29 @@
 import "./lib/error-capture";
 
-function renderAppHtml() {
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Caixa Vivo - Orçamento Gutê</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/start.ts"></script>
-  </body>
-</html>`;
+type ServerEntry = {
+  fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
+};
+
+let serverEntryPromise: Promise<ServerEntry> | undefined;
+
+async function getServerEntry(): Promise<ServerEntry> {
+  if (!serverEntryPromise) {
+    serverEntryPromise = import("@tanstack/react-start/server-entry").then(
+      (m) => (m.default ?? m) as ServerEntry,
+    );
+  }
+  return serverEntryPromise;
 }
 
 export default {
-  async fetch() {
-    return new Response(renderAppHtml(), {
-      status: 200,
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-cache",
-      },
-    });
+  async fetch(request: Request, env: unknown, ctx: unknown) {
+    try {
+      const handler = await getServerEntry();
+      return await handler.fetch(request, env, ctx);
+    } catch (error) {
+      console.error("Erro no processamento do servidor:", error);
+      const handler = await getServerEntry();
+      return await handler.fetch(request, env, ctx);
+    }
   },
 };

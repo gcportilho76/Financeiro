@@ -5,10 +5,3 @@ export const startInstance = {
 };
 
 export default startInstance;
-
-if (typeof window !== "undefined") {
-  const router = createRouter();
-  router.load().then(() => {
-    router.hydrate();
-  });
-}
