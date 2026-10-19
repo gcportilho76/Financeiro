@@ -25,6 +25,7 @@ function renderFallbackHtml() {
   </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/src/start.ts"></script>
   </body>
 </html>`;
 }
@@ -44,7 +45,7 @@ export default {
 
       return response;
     } catch (error) {
-      console.error("Exceção de SSR capturada no server.ts:", error);
+      console.error("Fallback do servidor ativado:", error);
       return new Response(renderFallbackHtml(), {
         status: 200,
         headers: { "content-type": "text/html; charset=utf-8" },
