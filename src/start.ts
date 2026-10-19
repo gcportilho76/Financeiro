@@ -1,6 +1,9 @@
-import { createStart } from "@tanstack/react-start";
-import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
+import { createStartHandler, defaultRenderHandler } from "@tanstack/react-start/server";
+import { createRouter } from "./router";
 
-export const startInstance = createStart(() => ({
-  functionMiddleware: [attachSupabaseAuth],
-}));
+export const startHandler = createStartHandler({
+  createRouter,
+  getRouterManifest: () => import("@tanstack/react-start/router-manifest"),
+});
+
+export default startHandler(defaultRenderHandler);
