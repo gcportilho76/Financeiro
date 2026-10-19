@@ -25,6 +25,7 @@ function renderFallbackHtml() {
   </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/src/start.ts"></script>
   </body>
 </html>`;
 }
