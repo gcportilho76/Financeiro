@@ -15,15 +15,45 @@ async function getServerEntry(): Promise<ServerEntry> {
   return serverEntryPromise;
 }
 
+function renderHtmlShell() {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Caixa Vivo - Orçamento Gutê</title>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>`;
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
-      return await handler.fetch(request, env, ctx);
+      const response = await handler.fetch(request, env, ctx);
+
+      // Intercepta qualquer resposta 500 ou formato unhandled do H3
+      if (response.status >= 500) {
+        const cloned = response.clone();
+        const text = await cloned.text().catch(() => "");
+        if (text.includes('"unhandled":true') || text.includes('"message":"HTTPError"')) {
+          return new Response(renderHtmlShell(), {
+            status: 200,
+            headers: { "content-type": "text/html; charset=utf-8" },
+          });
+        }
+      }
+
+      return response;
     } catch (error) {
-      console.error("Erro na resposta do SSR:", error);
-      const handler = await getServerEntry();
-      return await handler.fetch(request, env, ctx);
+      console.error("Capturado erro no servidor durante SSR:", error);
+      return new Response(renderHtmlShell(), {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
     }
   },
 };
