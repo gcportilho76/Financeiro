@@ -1,6 +1,21 @@
 import "./lib/error-capture";
 
-function renderAppHtml() {
+type ServerEntry = {
+  fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
+};
+
+let serverEntryPromise: Promise<ServerEntry> | undefined;
+
+async function getServerEntry(): Promise<ServerEntry> {
+  if (!serverEntryPromise) {
+    serverEntryPromise = import("@tanstack/react-start/server-entry").then(
+      (m) => (m.default ?? m) as ServerEntry,
+    );
+  }
+  return serverEntryPromise;
+}
+
+function renderFallbackHtml() {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
   <head>
@@ -15,13 +30,21 @@ function renderAppHtml() {
 }
 
 export default {
-  async fetch() {
-    return new Response(renderAppHtml(), {
+  async fetch(request: Request, env: unknown, ctx: unknown) {
+    try {
+      const handler = await getServerEntry();
+      const response = await handler.fetch(request, env, ctx);
+
+      if (response && response.status < 500) {
+        return response;
+      }
+    } catch (error) {
+      console.error("Exceção no SSR capturada em server.ts:", error);
+    }
+
+    return new Response(renderFallbackHtml(), {
       status: 200,
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-cache",
-      },
+      headers: { "content-type": "text/html; charset=utf-8" },
     });
   },
 };
