@@ -25,6 +25,7 @@ function renderHtmlShell() {
   </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/src/router.tsx"></script>
   </body>
 </html>`;
 }
@@ -35,7 +36,6 @@ export default {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
 
-      // Intercepta qualquer resposta 500 ou formato unhandled do H3
       if (response.status >= 500) {
         const cloned = response.clone();
         const text = await cloned.text().catch(() => "");
