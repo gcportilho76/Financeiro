@@ -17,13 +17,7 @@ async function getServerEntry(): Promise<ServerEntry> {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
-    try {
-      const handler = await getServerEntry();
-      return await handler.fetch(request, env, ctx);
-    } catch (error) {
-      console.error("Erro na execução do handler:", error);
-      const handler = await getServerEntry();
-      return await handler.fetch(request, env, ctx);
-    }
+    const handler = await getServerEntry();
+    return await handler.fetch(request, env, ctx);
   },
 };
