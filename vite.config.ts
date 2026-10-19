@@ -9,7 +9,16 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  esbuild: {
+    jsx: "automatic",
+    tsconfigRaw: {
+      compilerOptions: {
+        importsNotUsedAsValues: "remove",
+      },
+    },
+  },
   build: {
     outDir: "dist",
+    target: "es2022",
   },
 });
