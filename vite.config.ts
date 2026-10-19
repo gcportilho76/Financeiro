@@ -9,7 +9,6 @@ export default defineConfig({
   nitro: {
     preset: "vercel",
     prerender: {
-      crawlLinks: false,
       routes: ["/"],
     },
   },
