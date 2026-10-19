@@ -15,9 +15,40 @@ async function getServerEntry(): Promise<ServerEntry> {
   return serverEntryPromise;
 }
 
+function renderHtmlShell() {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Caixa Vivo - Orçamento Gutê</title>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>`;
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
-    const handler = await getServerEntry();
-    return await handler.fetch(request, env, ctx);
+    try {
+      const handler = await getServerEntry();
+      const response = await handler.fetch(request, env, ctx);
+
+      if (response && response.status >= 500) {
+        return new Response(renderHtmlShell(), {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
+
+      return response;
+    } catch (error) {
+      console.error("SSR Handler Fallback acionado:", error);
+      return new Response(renderHtmlShell(), {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
   },
 };
