@@ -1,29 +1,15 @@
 import "./lib/error-capture";
-
-type ServerEntry = {
-  fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
-};
-
-let serverEntryPromise: Promise<ServerEntry> | undefined;
-
-async function getServerEntry(): Promise<ServerEntry> {
-  if (!serverEntryPromise) {
-    serverEntryPromise = import("@tanstack/react-start/server-entry").then(
-      (m) => (m.default ?? m) as ServerEntry,
-    );
-  }
-  return serverEntryPromise;
-}
+import entryServer from "./entry-server"; // Ajuste o caminho se o seu ficheiro for entry-server.server.ts
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
-      const handler = await getServerEntry();
-      return await handler.fetch(request, env, ctx);
-    } catch (error) {
-      console.error("Erro no processamento do servidor:", error);
-      const handler = await getServerEntry();
-      return await handler.fetch(request, env, ctx);
+      return await entryServer({ request, env, ctx });
+    } catch (e) {
+      return new Response(
+        `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>Caixa Vivo</title></head><body><div id="root"></div></body></html>`,
+        { status: 200, headers: { "content-type": "text/html; charset=utf-8" } }
+      );
     }
   },
 };
