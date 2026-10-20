@@ -1,13 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
+// Importe aqui o seu componente principal (ex: Dashboard)
+import { Dashboard } from '@/components/Dashboard' 
 
 export const Route = createFileRoute('/')({
   component: IndexComponent,
 })
 
 function IndexComponent() {
-  return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold">Aplicação Financeira</h1>
-    </div>
-  )
+  return <Dashboard />
 }
