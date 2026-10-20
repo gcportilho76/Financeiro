@@ -1,8 +1,13 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute("/")({
-  ssr: false,
-  beforeLoad: () => {
-    throw redirect({ to: "/dashboard" });
-  },
-});
+export const Route = createFileRoute('/')({
+  component: IndexComponent,
+})
+
+function IndexComponent() {
+  return (
+    <div className="p-4">
+      <h1 className="text-2xl font-bold">Aplicação Financeira</h1>
+    </div>
+  )
+}
