@@ -4,6 +4,7 @@
 
 import { Route as rootRoute } from './routes/__root'
 import { Route as IndexImport } from './routes/index'
+import { Route as DashboardImport } from './routes/_authenticated/dashboard'
 
 const IndexRoute = IndexImport.update({
   id: '/',
@@ -11,4 +12,10 @@ const IndexRoute = IndexImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
-export const routeTree = rootRoute.addChildren([IndexRoute])
+const DashboardRoute = DashboardImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRoute,
+} as any)
+
+export const routeTree = rootRoute.addChildren([IndexRoute, DashboardRoute])
