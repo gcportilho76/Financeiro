@@ -1,24 +1,23 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path from "path";
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
+import path from 'path'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    TanStackRouterVite({
+      target: 'react',
+      autoCodeSplitting: true,
+    }),
+    react(),
+  ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
-  esbuild: {
-    jsx: "automatic",
-    tsconfigRaw: {
-      compilerOptions: {
-        importsNotUsedAsValues: "remove",
-      },
+      '@': path.resolve(__dirname, './src'),
     },
   },
   build: {
-    outDir: "dist",
-    target: "es2022",
+    outDir: 'dist',
+    target: 'es2022',
   },
-});
+})
